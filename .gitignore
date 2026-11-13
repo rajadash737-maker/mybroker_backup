@@ -1,0 +1,92 @@
+# Environment files and local configuration (keep shareable templates)
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+**/local.properties
+
+# Firebase configuration and service credentials
+**/google-services.json
+**/*serviceAccount*.json
+**/*service-account*.json
+**/*service_account*.json
+**/*firebase*credential*.json
+**/*credential*.json
+**/credentials/
+
+# Signing keys, certificates, and local signing configuration
+**/*.jks
+**/*.keystore
+**/*.p12
+**/*.pfx
+**/*.pem
+**/*.key
+**/keystore.properties
+**/signing.properties
+
+# Gradle, Kotlin, Android build outputs, and IDE state
+**/.gradle/
+**/.gradle-*/
+**/.kotlin/
+**/build/
+**/captures/
+**/.externalNativeBuild/
+**/.cxx/
+**/.idea/
+**/*.iml
+**/.vscode/
+
+# Python environments, bytecode, and tool caches
+**/.venv/
+**/venv/
+**/env/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+**/.tox/
+**/.nox/
+**/htmlcov/
+**/.coverage
+**/coverage.xml
+
+# Database files, SQL dumps, and local backups
+/backups/
+**/*.sql
+**/*.dump
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+
+# Uploaded/private user content
+**/app/uploads/
+
+# Logs and temporary files
+**/*.log
+**/*.tmp
+**/*.temp
+**/*.swp
+**/*.swo
+**/*~
+**/tmp/
+**/temp/
+**/logs/
+
+# OS-generated files
+.DS_Store
+**/.DS_Store
+Thumbs.db
+**/Thumbs.db
+Desktop.ini
+**/Desktop.ini
+
+# Local generated caches and test work areas at this workspace root
+/.android-user-home/
+/.pytest-tmp/
+/pytest-work/
+/.uv-cache*/
+
+# Exclude the two local Android Maps key-bearing files from this backup
+/android/MyBroker_front/MyBroker_front/MyBroker_front-master/app/src/main/res/values/strings.xml
+/android/MyBroker_admin/MyBroker_admin/MyBroker_admin-master/app/src/main/AndroidManifest.xml

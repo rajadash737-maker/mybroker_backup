@@ -1,0 +1,220 @@
+package com.example.myapplication.ui.feature.buyer.land_detail
+
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import android.widget.Toast
+import com.example.myapplication.ui.feature.buyer.land_detail.components.BottomActionBar
+import com.example.myapplication.ui.feature.buyer.land_detail.components.ImageSlider
+import com.example.myapplication.ui.feature.buyer.land_detail.components.LandInfoSection
+import com.example.myapplication.ui.feature.buyer.land_detail.components.MapPreviewSection
+import com.example.myapplication.network.ApiClient
+import com.example.myapplication.network.SessionManager
+import androidx.compose.ui.platform.LocalContext
+import com.example.myapplication.ui.feature.buyer.profile.missingBuyerOfferProfileFields
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
+
+@Composable
+fun LandDetailScreen(
+    landId: Int,
+    viewModel: LandDetailViewModel,
+    onBookNowClick: (Int) -> Unit = {},
+    onViewMapClick: (Int) -> Unit = {},
+    onEditProfileForOffer: (Int) -> Unit = {},
+    resumeOfferAfterProfile: Boolean = false,
+    onResumeOfferCheckConsumed: () -> Unit = {}
+) {
+    val state by viewModel.uiState.collectAsState()
+    var showOfferDialog by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val sessionManager = remember { SessionManager(context.applicationContext) }
+    val scope = rememberCoroutineScope()
+    var isCheckingOfferProfile by remember { mutableStateOf(false) }
+
+    LaunchedEffect(context) {
+        ApiClient.init(context.applicationContext)
+    }
+
+    LaunchedEffect(resumeOfferAfterProfile, landId) {
+        if (!resumeOfferAfterProfile) return@LaunchedEffect
+        isCheckingOfferProfile = true
+        try {
+            val response = ApiClient.apiService.getMyProfile()
+            val profile = response.body().takeIf { response.isSuccessful }
+            if (profile == null) {
+                Toast.makeText(context, "Unable to verify your profile. Please try again.", Toast.LENGTH_LONG).show()
+            } else {
+                val missing = missingBuyerOfferProfileFields(profile)
+                if (missing.isEmpty()) {
+                    showOfferDialog = true
+                } else {
+                    Toast.makeText(
+                        context,
+                        "Profile is still incomplete. Missing: ${missing.joinToString(", ")}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        } catch (error: Exception) {
+            if (error is CancellationException) throw error
+            Toast.makeText(context, "Unable to verify your profile. Please try again.", Toast.LENGTH_LONG).show()
+        } finally {
+            isCheckingOfferProfile = false
+            onResumeOfferCheckConsumed()
+        }
+    }
+
+    LaunchedEffect(landId) {
+        viewModel.loadLand(landId)
+    }
+
+    LaunchedEffect(state.offerSuccessMessage, state.errorMessage) {
+        val msg = state.offerSuccessMessage ?: state.errorMessage
+        if (!msg.isNullOrBlank()) {
+            snackbarHostState.showSnackbar(msg)
+            if (state.offerSuccessMessage != null) showOfferDialog = false
+            viewModel.clearMessage()
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        bottomBar = {
+            state.land?.let { land ->
+                val currentUserId = sessionManager.getUserId() ?: 0
+                val isOwner = currentUserId > 0 && land.sellerUserId == currentUserId
+                if (!isOwner) {
+                    BottomActionBar(
+                        isOfferLocked = land.isOfferLocked,
+                        offerLockExpiresAt = land.offerLockExpiresAt,
+                        onBookClick = { onBookNowClick(land.id) },
+                        onOfferClick = {
+                            if (!land.isOfferLocked && !isCheckingOfferProfile) {
+                                scope.launch {
+                                    isCheckingOfferProfile = true
+                                    try {
+                                        ApiClient.init(context.applicationContext)
+                                        val response = ApiClient.apiService.getMyProfile()
+                                        val profile = response.body().takeIf { response.isSuccessful }
+                                        if (profile == null) {
+                                            Toast.makeText(context, "Unable to verify your profile. Please try again.", Toast.LENGTH_LONG).show()
+                                        } else {
+                                            val missing = missingBuyerOfferProfileFields(profile)
+                                            if (missing.isEmpty()) {
+                                                showOfferDialog = true
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "Please complete your profile before making an offer.",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                                onEditProfileForOffer(land.id)
+                                            }
+                                        }
+                                    } catch (error: Exception) {
+                                        if (error is CancellationException) throw error
+                                        Toast.makeText(context, "Unable to verify your profile. Please try again.", Toast.LENGTH_LONG).show()
+                                    } finally {
+                                        isCheckingOfferProfile = false
+                                    }
+                                }
+                            }
+                        }
+                    )
+                } else {
+                    Text(
+                        text = "This is your listing",
+                        modifier = Modifier
+                            .padding(16.dp),
+                        style = androidx.compose.material3.MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+    ) { padding ->
+
+        if (state.isLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        state.land?.let { land ->
+            LazyColumn(
+                modifier = Modifier.padding(padding),
+                contentPadding = PaddingValues(bottom = 80.dp)
+            ) {
+                item { ImageSlider(land.images) }
+                item { LandInfoSection(land = land) }
+                item {
+                    MapPreviewSection(
+                        land = land,
+                        onOpenMapClick = { onViewMapClick(land.id) }
+                    )
+                }
+            }
+        }
+    }
+
+    val currentUserId = sessionManager.getUserId() ?: 0
+    val isOwner = state.land?.sellerUserId?.let { it == currentUserId && currentUserId > 0 } == true
+    if (showOfferDialog && state.land?.isOfferLocked != true && !isOwner) {
+        AlertDialog(
+            onDismissRequest = { showOfferDialog = false },
+            title = { Text("Make Offer") },
+            text = {
+                OutlinedTextField(
+                    value = state.offerInput,
+                    onValueChange = viewModel::onOfferInputChanged,
+                    label = { Text("Enter Amount") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { viewModel.submitOffer() },
+                    enabled = !state.isSubmittingOffer
+                ) {
+                    Text(if (state.isSubmittingOffer) "Sending..." else "Send")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showOfferDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+}

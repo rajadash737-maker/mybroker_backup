@@ -1,0 +1,17 @@
+.env
+serviceAccountKey.json
+notification_users.json
+uvicorn.err.log
+uvicorn.out.log
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+mybroker_db_backup.sql
+app/uploads/profiles/*.png
+app/uploads/profiles/*.jpg
+app/uploads/sell-land/
+MyApplication/
+mybroker_admin/

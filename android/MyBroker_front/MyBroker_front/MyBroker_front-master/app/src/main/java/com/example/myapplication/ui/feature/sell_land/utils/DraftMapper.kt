@@ -1,0 +1,174 @@
+package com.example.myapplication.ui.feature.sell_land.utils
+
+import com.example.myapplication.ui.feature.sell_land.model.LandDetails
+import com.example.myapplication.ui.feature.sell_land.model.LandDocuments
+import com.example.myapplication.ui.feature.sell_land.model.PricingDetails
+import com.example.myapplication.ui.feature.sell_land.model.SellLandDraft
+import com.example.myapplication.ui.feature.sell_land.model.SellLandMediaResponse
+import com.example.myapplication.ui.feature.sell_land.model.SellLandResponse
+import com.example.myapplication.ui.feature.sell_land.model.SellLandStep
+import com.example.myapplication.ui.feature.sell_land.model.SellerDetails
+import com.google.gson.JsonParser
+import com.google.android.gms.maps.model.LatLng
+
+object DraftMapper {
+
+    /** The API stores the next wizard screen as 1-based values. Unknown values restart safely. */
+    fun stepFromDraftStep(step: Int?): SellLandStep = when (step) {
+        1 -> SellLandStep.SELLER
+        2 -> SellLandStep.LAND
+        3 -> SellLandStep.MEDIA
+        4 -> SellLandStep.MAP
+        5 -> SellLandStep.PRICING
+        6 -> SellLandStep.REVIEW
+        7 -> SellLandStep.PAYMENT
+        else -> SellLandStep.SELLER
+    }
+
+    fun genuineDrafts(listings: List<SellLandResponse>): List<SellLandResponse> =
+        listings.filter { it.isDraft && it.status.equals("DRAFT", ignoreCase = true) }
+
+    fun newlyCreatedDrafts(
+        listings: List<SellLandResponse>,
+        preExistingIds: Set<Int>
+    ): List<SellLandResponse> = genuineDrafts(listings).filterNot { it.id in preExistingIds }
+
+    fun emptyDraft(): SellLandDraft {
+        return SellLandDraft(
+            sellerDetails = null,
+            landDetails = null,
+            images = emptyList(),
+            documents = LandDocuments(),
+            polygon = emptyList(),
+            pricing = null,
+            lastStep = SellLandStep.SELLER
+        )
+    }
+
+    fun isDraftEmpty(draft: SellLandDraft): Boolean {
+        return draft.sellerDetails == null &&
+                draft.landDetails == null &&
+                draft.images.isEmpty() &&
+                draft.documents.saleDeed == null &&
+                draft.documents.khataCertificate == null &&
+                draft.documents.encumbrance == null &&
+                draft.documents.sellerIdentity == null &&
+                draft.polygon.isEmpty() &&
+                draft.pricing == null
+    }
+
+    fun canProceedToNextStep(draft: SellLandDraft): Boolean {
+        return when (draft.lastStep) {
+            SellLandStep.SELLER -> draft.sellerDetails != null
+            SellLandStep.LAND -> draft.landDetails != null
+            SellLandStep.MEDIA -> draft.images.isNotEmpty()
+            SellLandStep.MAP -> draft.polygon.size >= 3
+            SellLandStep.PRICING -> draft.pricing != null
+            SellLandStep.REVIEW -> true
+            SellLandStep.PAYMENT -> true
+            SellLandStep.SUCCESS -> true
+        }
+    }
+
+    fun fromExistingListing(
+        res: SellLandResponse,
+        media: List<SellLandMediaResponse>
+    ): SellLandDraft {
+        val photos = media
+            .filter { it.mediaType.equals("photo", ignoreCase = true) }
+            .map { it.fileUrl }
+
+        fun firstDocUrl(vararg docTypes: String): String? {
+            val allowed = docTypes.toSet()
+            return media.firstOrNull {
+                it.mediaType.equals("document", ignoreCase = true) &&
+                        !it.documentType.isNullOrBlank() &&
+                        allowed.contains(it.documentType)
+            }?.fileUrl
+        }
+
+        // NOTE:
+        // LandDocuments has only 4 fields, so keep mapping strict.
+        // Full document-type tracking should come from media list in ViewModel.
+        val docs = LandDocuments(
+            saleDeed = firstDocUrl("sale_deed", "original_sale_deed"),
+            khataCertificate = firstDocUrl("khata_patta"),
+            encumbrance = firstDocUrl("encumbrance_certificate"),
+            sellerIdentity = firstDocUrl("aadhaar_pan", "seller_identity_proof"),
+            dynamicDocs = media
+                .filter { it.mediaType.equals("document", ignoreCase = true) && !it.documentType.isNullOrBlank() }
+                .associate { it.documentType!!.trim().lowercase() to it.fileUrl }
+        )
+
+        return SellLandDraft(
+            sellerDetails = SellerDetails(
+                name = res.ownerName.orEmpty(),
+                mobile = res.ownerMobile.orEmpty(),
+                sellerType = normalizeOwnershipType(res.ownershipType),
+                sellerCategory = normalizeSellerCategory(res.ownerCategory)
+            ),
+            landDetails = LandDetails(
+                title = res.title.orEmpty(),
+                landType = res.landType,
+                area = (res.area ?: 0.0).toString(),
+                areaUnit = res.areaUnit,
+                state = res.state.orEmpty(),
+                city = res.city.orEmpty(),
+                pincode = res.pincode.orEmpty()
+            ),
+            images = photos,
+            documents = docs,
+            polygon = parseBoundaryPoints(res.boundaryPoints),
+            pricing = PricingDetails(
+                priceType = res.priceType,
+                price = res.expectedPrice ?: 0.0,
+                negotiable = res.negotiable,
+                availability = res.availability,
+                pricingVersion = res.pricingVersion ?: 1
+            ),
+            lastStep = stepFromDraftStep(res.draftStep)
+        )
+    }
+
+    private fun normalizeOwnershipType(value: String?): String {
+        return when (value?.trim()?.lowercase()) {
+            "single_owner" -> "single_owner"
+            "multi_owner" -> "multi_owner"
+            "inherited_land" -> "inherited_land"
+            "owner" -> "single_owner"
+            "broker" -> "multi_owner"
+            "power_of_attorney", "power of attorney", "power-of-attorney" -> "inherited_land"
+            "other" -> "single_owner"
+            else -> "single_owner"
+        }
+    }
+
+    private fun normalizeSellerCategory(value: String?): String {
+        return when (value?.trim()?.lowercase()) {
+            "general" -> "general"
+            "obc" -> "obc"
+            "sc" -> "sc"
+            "st" -> "st"
+            else -> "general"
+        }
+    }
+
+    private fun parseBoundaryPoints(boundaryJson: String?): List<LatLng> {
+        if (boundaryJson.isNullOrBlank()) return emptyList()
+
+        return try {
+            val arr = JsonParser.parseString(boundaryJson).asJsonArray
+            buildList {
+                arr.forEach { point ->
+                    if (!point.isJsonObject) return@forEach
+                    val p = point.asJsonObject
+                    val lat = p.get("lat")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asDouble
+                    val lng = p.get("lng")?.takeIf { it.isJsonPrimitive && it.asJsonPrimitive.isNumber }?.asDouble
+                    if (lat != null && lng != null && lat.isFinite() && lng.isFinite()) add(LatLng(lat, lng))
+                }
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+}
