@@ -43,24 +43,27 @@ def send_notification(token: str, title: str, body: str, data: dict[str, str] | 
     try:
         _ensure_firebase_initialized()
     except Exception as exc:  # noqa: BLE001 - log and return error
-        logger.exception("Failed to initialize Firebase Admin SDK: %s", exc)
+        logger.error("Failed to initialize Firebase Admin SDK (%s)", type(exc).__name__)
         return {"success": False, "skipped": True, "error": "firebase_init_failed"}
 
-    payload = dict(data or {})
-    payload.setdefault("title", title)
-    payload.setdefault("body", body)
-
-    message = messaging.Message(
-        data=payload,
-        token=token,
-        notification=messaging.Notification(title=title, body=body),
-        android=messaging.AndroidConfig(priority="high"),
-    )
-
     try:
+        payload = dict(data or {})
+        payload.setdefault("title", title)
+        payload.setdefault("body", body)
+
+        message = messaging.Message(
+            data=payload,
+            token=token,
+            notification=messaging.Notification(title=title, body=body),
+            android=messaging.AndroidConfig(priority="high"),
+        )
         message_id = messaging.send(message)
         logger.debug("FCM message sent: %s", message_id)
         return {"success": True, "message_id": message_id}
+    except messaging.UnregisteredError:
+        # The caller knows the authenticated user row whose token was sent and
+        # can clear it conditionally without exposing the token in logs.
+        return {"success": False, "error": "unregistered"}
     except Exception as exc:  # noqa: BLE001 - log and return error
-        logger.exception("FCM send failed: %s", exc)
+        logger.warning("FCM send failed (%s)", type(exc).__name__)
         return {"success": False, "error": "fcm_send_failed"}

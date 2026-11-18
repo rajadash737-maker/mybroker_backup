@@ -1,10 +1,13 @@
 package com.example.mybroker_admin.feature.admin.listings
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mybroker_admin.data.remote.ApiClient
 import com.example.mybroker_admin.data.repository.AdminListingRepository
 import com.example.mybroker_admin.data.remote.dto.AdminFieldOfficerOptionDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationPreviewDto
+import com.example.mybroker_admin.core.session.SessionManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +16,8 @@ import java.math.RoundingMode
 import java.text.DecimalFormat
 import java.text.SimpleDateFormat
 import java.util.Locale
+import retrofit2.HttpException
+import java.io.IOException
 
 data class BookingDocumentUi(
     val name: String,
@@ -65,7 +70,14 @@ data class BookedListingDetailUi(
     val land: BookedLandInfoUi,
     val payment: BookedPaymentInfoUi,
     val fieldOfficer: FieldOfficerUi?,
-    val registry: RegistryInfoUi?
+    val registry: RegistryInfoUi?,
+    val cancellationReason: String? = null,
+    val refundDecision: String? = null,
+    val refundStatus: String? = null,
+    val approvedRefundAmount: String? = null,
+    val actualRefundedAmount: String? = null,
+    val refundReference: String? = null,
+    val cancelledAt: String? = null
 )
 
 data class BookedListingDetailState(
@@ -77,14 +89,83 @@ data class BookedListingDetailState(
     val fieldOfficers: List<AdminFieldOfficerOptionDto> = emptyList(),
     val isUpdatingOfficer: Boolean = false,
     val isUpdatingRegistry: Boolean = false,
-    val selectedFieldOfficerId: Int? = null
+    val selectedFieldOfficerId: Int? = null,
+    val cancellationPreview: PropertyBookingCancellationPreviewDto? = null,
+    val isCancellingBooking: Boolean = false,
+    val isLoadingCancellationPreview: Boolean = false,
+    val cancellationPreviewError: String? = null,
+    val cancellationCompleted: Boolean = false
 )
 
 class BookedListingDetailViewModel : ViewModel() {
+    private companion object {
+        const val TAG = "BookingCancelPreview"
+    }
+
     private val repo = AdminListingRepository(ApiClient.adminListingApi)
 
     private val _state = MutableStateFlow(BookedListingDetailState())
     val state: StateFlow<BookedListingDetailState> = _state.asStateFlow()
+
+    fun loadCancellationPreview(bookingId: Int) = viewModelScope.launch {
+        if (com.example.mybroker_admin.BuildConfig.DEBUG) {
+            Log.d(TAG, "preview_request_started role_raw=${SessionManager.currentUserRole} role_resolved=${PropertyBookingCancellationUiPolicy.normalizeRole(SessionManager.currentUserRole)} booking_id=$bookingId")
+        }
+        _state.value = _state.value.copy(
+            isLoadingCancellationPreview = true,
+            cancellationPreviewError = null,
+            cancellationPreview = null
+        )
+        runCatching {
+            val response = repo.getBookingCancellationPreview(bookingId)
+            if (!response.isSuccessful) throw HttpException(response)
+            val preview = response.body() ?: error("Cancellation preview returned an empty response")
+            response.code() to preview
+        }
+            .onSuccess { (httpStatus, preview) ->
+                if (com.example.mybroker_admin.BuildConfig.DEBUG) {
+                    Log.d(TAG, "preview_request_succeeded http_status=$httpStatus booking_id=${preview.booking_id} listing_id=${preview.listing_id} booking_status=${preview.booking_status} listing_status=${preview.listing_status} can_cancel=${preview.can_cancel} blocking_reason=${preview.blocking_reason}")
+                }
+                _state.value = _state.value.copy(
+                    cancellationPreview = preview,
+                    isLoadingCancellationPreview = false,
+                    cancellationPreviewError = null
+                )
+            }
+            .onFailure {
+                val httpStatus = (it as? HttpException)?.code()
+                if (com.example.mybroker_admin.BuildConfig.DEBUG) {
+                    Log.d(TAG, "preview_request_failed http_status=${httpStatus ?: "unavailable"} booking_id=$bookingId error_type=${it::class.simpleName}")
+                }
+                _state.value = _state.value.copy(
+                    isLoadingCancellationPreview = false,
+                    cancellationPreviewError = when {
+                        httpStatus != null -> "Cancellation preview failed (HTTP $httpStatus). Retry to check eligibility."
+                        it is IOException -> "Network error while checking cancellation eligibility. Retry when connected."
+                        else -> "Could not check cancellation eligibility. Retry to check again."
+                    }
+                )
+            }
+    }
+
+    fun cancelPropertyBooking(bookingId: Int, decision: String, amount: Double, reason: String) = viewModelScope.launch {
+        _state.value = _state.value.copy(isCancellingBooking = true, error = null)
+        runCatching { repo.cancelPropertyBooking(bookingId, decision, amount, reason) }
+            .onSuccess { result ->
+                _state.value = _state.value.copy(
+                    isCancellingBooking = false,
+                    message = "Booking cancelled (${result.booking_status.replace('_', ' ').uppercase()}). " +
+                        "Reason: $reason. ${result.refund_decision.replace('_', ' ')}: ₹${result.approved_refund_amount}",
+                    detail = _state.value.detail?.copy(
+                        status = result.listing_status.replace('_', ' ').uppercase(),
+                        bookingStatus = result.booking_status.replace('_', ' ').uppercase()
+                    ),
+                    cancellationPreview = _state.value.cancellationPreview?.copy(can_cancel = false, blocking_reason = "Cancellation already submitted"),
+                    cancellationCompleted = true
+                )
+            }
+            .onFailure { _state.value = _state.value.copy(isCancellingBooking = false, error = it.message ?: "Could not cancel booking") }
+    }
 
     private fun formatPrice(value: Double?): String? {
         if (value == null || value <= 0.0) return null
@@ -122,8 +203,8 @@ class BookedListingDetailViewModel : ViewModel() {
         return raw
     }
 
-    fun load(listingId: Int) = viewModelScope.launch {
-        _state.value = _state.value.copy(isLoading = true, error = null, message = null)
+    fun load(listingId: Int, preserveMessage: Boolean = false) = viewModelScope.launch {
+        _state.value = _state.value.copy(isLoading = true, error = null, message = if (preserveMessage) _state.value.message else null)
 
         runCatching { repo.getBookedListingDetail(listingId) }
             .onSuccess { dto ->
@@ -202,7 +283,7 @@ class BookedListingDetailViewModel : ViewModel() {
                     loaded = true,
                     isLoading = false,
                     error = null,
-                    message = null,
+                    message = if (preserveMessage) _state.value.message else null,
                     detail = detail,
                     selectedFieldOfficerId = dto.field_officer?.id
                 )
@@ -212,7 +293,7 @@ class BookedListingDetailViewModel : ViewModel() {
                     loaded = true,
                     isLoading = false,
                     error = it.message ?: "Failed to load booking detail",
-                    message = null
+                    message = if (preserveMessage) _state.value.message else null
                 )
             }
     }

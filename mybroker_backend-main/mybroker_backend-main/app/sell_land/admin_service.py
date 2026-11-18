@@ -75,7 +75,7 @@ from app.sell_land.admin_schemas import (
     ReviewDecision,
 )
 from app.sell_land.constants import BookingStatus, MediaType, PaymentStatus, SellLandStatus
-from app.sell_land.models import SellLandBooking, SellLandMedia, SellLandRequest
+from app.sell_land.models import PropertyBookingRefund, SellLandBooking, SellLandMedia, SellLandRequest
 from app.sell_land.repository import (
     apply_admin_review_decision,
     apply_admin_final_approval_decision,
@@ -1181,26 +1181,41 @@ def get_booked_listing_detail(
     listing = get_sell_land_request_by_id(db, request_id)
     if not listing:
         return None, "Sell land request not found"
-    if listing.status not in {SellLandStatus.BOOKED.value, SellLandStatus.SOLD.value}:
+    historical_cancelled = listing.status == SellLandStatus.LIVE.value
+    if listing.status not in {SellLandStatus.BOOKED.value, SellLandStatus.SOLD.value, SellLandStatus.LIVE.value}:
         return None, "Listing is not booked"
     if current_user.role == UserRole.ADMIN.value and listing.reviewed_by_id != current_user.id:
         return None, "You can only view booked listings verified by you"
 
-    booking = (
-        db.query(SellLandBooking)
-        .filter(
-            SellLandBooking.request_id == request_id,
-            SellLandBooking.payment_status == PaymentStatus.SUCCESS.value,
-        )
-        .order_by(
-            SellLandBooking.paid_at.is_(None),
-            SellLandBooking.paid_at.desc(),
-            SellLandBooking.created_at.desc(),
-        )
-        .first()
+    booking_query = db.query(SellLandBooking).filter(
+        SellLandBooking.request_id == request_id,
+        SellLandBooking.payment_status == PaymentStatus.SUCCESS.value,
     )
+    if historical_cancelled:
+        booking_query = booking_query.join(
+            PropertyBookingRefund, PropertyBookingRefund.booking_id == SellLandBooking.id
+        ).filter(SellLandBooking.booking_status == BookingStatus.CANCELLED.value)
+    else:
+        visible_booking_statuses = {
+            BookingStatus.BOOKED.value,
+            BookingStatus.CONFIRMED.value,
+            BookingStatus.IN_PROCESS.value,
+            BookingStatus.REGISTRY_SCHEDULED.value,
+            BookingStatus.REGISTRY_DONE.value,
+            BookingStatus.SOLD.value,
+        }
+        booking_query = booking_query.filter(SellLandBooking.booking_status.in_(visible_booking_statuses))
+    booking = booking_query.order_by(
+        SellLandBooking.paid_at.is_(None),
+        SellLandBooking.paid_at.desc(),
+        SellLandBooking.created_at.desc(),
+    ).first()
     if not booking:
-        return None, "Booking not found"
+        return None, "Cancelled booking history not found" if historical_cancelled else "Booking not found"
+
+    refund = db.query(PropertyBookingRefund).filter(
+        PropertyBookingRefund.booking_id == booking.id
+    ).first()
 
     accepted_offer = None
     if listing.accepted_offer_id is not None:
@@ -1236,11 +1251,9 @@ def get_booked_listing_detail(
         location = ", ".join([value for value in [listing.city, listing.state] if value])
         location = location or None
 
-    deal_price = (
-        accepted_offer.counter_amount
-        if accepted_offer and accepted_offer.counter_amount is not None
-        else accepted_offer.offered_amount if accepted_offer else booking.deal_amount
-    )
+    # A booking's price is immutable history. A later accepted offer belongs
+    # to a separate deal and must not replace this booking's amount.
+    deal_price = booking.deal_amount
 
     remaining_amount = None
     if deal_price is not None and booking.booking_fee_amount is not None:
@@ -1288,6 +1301,13 @@ def get_booked_listing_detail(
             proof_notes=booking.registry_notes,
             status=BookingStatus(booking.booking_status) if booking.booking_status else None,
         ),
+        cancellation_reason=refund.cancellation_reason if refund else None,
+        refund_decision=refund.refund_decision if refund else None,
+        refund_status=refund.refund_status if refund else None,
+        approved_refund_amount=refund.approved_refund_amount if refund else None,
+        actual_refunded_amount=refund.actual_refunded_amount if refund else None,
+        refund_reference=refund.transaction_reference if refund else None,
+        cancelled_at=refund.cancelled_at if refund else None,
     )
     return response, None
 

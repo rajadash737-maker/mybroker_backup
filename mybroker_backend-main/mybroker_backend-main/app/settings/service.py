@@ -1,5 +1,6 @@
 from pathlib import Path
 import secrets
+from decimal import Decimal
 
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
@@ -82,6 +83,7 @@ def remove_banner(db: Session, banner_id: int) -> bool:
 
 DEFAULT_SELLER_PROCESSING_FEE = 999.0
 DEFAULT_BUYER_PROCESSING_FEE = 1000.0
+DEFAULT_SITE_VISIT_FEE = Decimal("0.00")
 
 
 def get_or_create_processing_fees(db: Session):
@@ -92,6 +94,7 @@ def get_or_create_processing_fees(db: Session):
         db,
         seller_processing_fee=DEFAULT_SELLER_PROCESSING_FEE,
         buyer_processing_fee=DEFAULT_BUYER_PROCESSING_FEE,
+        site_visit_fee=DEFAULT_SITE_VISIT_FEE,
     )
 
 
@@ -99,6 +102,8 @@ def update_processing_fees(db: Session, payload: ProcessingFeeSettingsUpdateRequ
     record = get_or_create_processing_fees(db)
     record.seller_processing_fee = payload.seller_processing_fee
     record.buyer_processing_fee = payload.buyer_processing_fee
+    if payload.site_visit_fee is not None:
+        record.site_visit_fee = payload.site_visit_fee
     return save_processing_fee_settings(db, record)
 
 

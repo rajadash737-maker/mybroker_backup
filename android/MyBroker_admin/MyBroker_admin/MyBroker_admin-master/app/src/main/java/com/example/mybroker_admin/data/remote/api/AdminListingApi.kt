@@ -37,8 +37,21 @@ import retrofit2.http.PATCH
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import retrofit2.Response
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationPreviewDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationRequestDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationResponseDto
 
 interface AdminListingApi {
+    @GET("admin/sell-land/bookings/{bookingId}/cancellation-preview")
+    suspend fun getBookingCancellationPreview(@Path("bookingId") bookingId: Int): Response<PropertyBookingCancellationPreviewDto>
+
+    @POST("admin/sell-land/bookings/{bookingId}/cancel")
+    suspend fun cancelPropertyBooking(
+        @Path("bookingId") bookingId: Int,
+        @Body body: PropertyBookingCancellationRequestDto
+    ): PropertyBookingCancellationResponseDto
+
     @GET("admin/sell-land/dashboard/workflow-summary")
     suspend fun getWorkflowSummary(): AdminWorkflowSummaryDto
 

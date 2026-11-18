@@ -1,4 +1,4 @@
-package com.example.mybroker_admin.feature.admin.dashboard.presentation
+﻿package com.example.mybroker_admin.feature.admin.dashboard.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -41,7 +41,8 @@ fun AdminDashboardScreen(
     onRejectedClick: () -> Unit,
     onCancelRefundClick: () -> Unit,
     onProfileClick: () -> Unit,
-    onNotificationsClick: () -> Unit
+    onNotificationsClick: () -> Unit,
+    onSiteVisitsClick: () -> Unit
 ) {
     PullToRefreshBox(
         isRefreshing = isRefreshing,
@@ -102,6 +103,10 @@ fun AdminDashboardScreen(
             }
 
             item {
+                androidx.compose.material3.Button(onClick = onSiteVisitsClick) { Text("Site Visits") }
+            }
+
+            item {
                 Text(
                     text = "Workflow Overview",
                     style = MaterialTheme.typography.titleMedium
@@ -155,3 +160,5 @@ fun AdminDashboardScreen(
         }
     }
 }
+
+

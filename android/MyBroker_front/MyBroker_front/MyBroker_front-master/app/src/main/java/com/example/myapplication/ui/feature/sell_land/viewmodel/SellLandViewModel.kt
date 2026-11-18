@@ -20,7 +20,7 @@ import com.example.myapplication.ui.feature.sell_land.model.sellerPricingRequest
 import com.example.myapplication.ui.feature.sell_land.model.toSellLandModel
 import com.example.myapplication.ui.feature.sell_land.model.toTrackingSellLandModel
 import com.example.myapplication.ui.feature.sell_land.status.ListingStatus
-import com.example.myapplication.ui.feature.sell_land.status.OfferStatus
+import com.example.myapplication.ui.feature.sell_land.status.offerStatusFromApi
 import com.example.myapplication.ui.feature.sell_land.utils.DraftMapper
 import com.example.myapplication.ui.feature.sell_land.utils.DraftSaveSerialiser
 import com.example.myapplication.ui.feature.sell_land.utils.SellLandDraftLoader
@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.example.myapplication.ui.feature.home_pase.IncomingOfferCountStore
 import java.io.File
 
 sealed interface SellLandEntryState {
@@ -754,15 +755,6 @@ class SellLandViewModel : ViewModel() {
         }
     }
 
-    private fun mapOfferStatus(raw: String): OfferStatus = when (raw.trim().uppercase()) {
-        "PENDING" -> OfferStatus.PENDING
-        "ACCEPTED" -> OfferStatus.ACCEPTED
-        "REJECTED" -> OfferStatus.REJECTED
-        "COUNTERED" -> OfferStatus.COUNTERED
-        "EXPIRED" -> OfferStatus.EXPIRED
-        else -> OfferStatus.PENDING
-    }
-
     fun loadSellerOffers(requestId: Int) {
         viewModelScope.launch {
             _loading.value = true
@@ -780,7 +772,7 @@ class SellLandViewModel : ViewModel() {
                             buyerMobile = item.buyer.mobile,
                             amount = item.offeredAmount,
                             counterAmount = item.counterAmount,
-                            status = mapOfferStatus(item.offerStatus)
+                            status = offerStatusFromApi(item.offerStatus)
                         )
                     }
                 }
@@ -797,6 +789,7 @@ class SellLandViewModel : ViewModel() {
 
             remote.acceptOffer(requestId, offerId)
                 .onSuccess {
+                    IncomingOfferCountStore.refresh()
                     loadSellerOffers(requestId)
                     loadStatusListings()
                 }
@@ -815,6 +808,7 @@ class SellLandViewModel : ViewModel() {
 
             remote.rejectOffer(requestId, offerId)
                 .onSuccess {
+                    IncomingOfferCountStore.refresh()
                     loadSellerOffers(requestId)
                     loadStatusListings() // add this
                 }
@@ -836,6 +830,7 @@ class SellLandViewModel : ViewModel() {
 
             remote.counterOffer(requestId, offerId, counterAmount)
                 .onSuccess {
+                    IncomingOfferCountStore.refresh()
                     loadSellerOffers(requestId)
                     loadStatusListings() // add this
                 }

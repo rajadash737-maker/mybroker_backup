@@ -5,6 +5,7 @@ import pytest
 
 from app.sell_land import service
 from app.sell_land.constants import PaymentStatus, SellLandStatus
+from app.sell_land.models import SellLandRequest
 from app.sell_land.schemas import BuyerBookingCreateRequest
 
 
@@ -31,7 +32,7 @@ def test_v2_direct_booking_preview_and_creation_use_same_whole_rupee_amount(
     )
     monkeypatch.setattr(service, "release_expired_offer_locks", lambda _db: None)
     monkeypatch.setattr(service, "get_live_sell_land_request_by_id", lambda _db, _id: listing)
-    monkeypatch.setattr(service, "get_booking_for_listing_buyer", lambda *_args: None)
+    monkeypatch.setattr(service, "get_current_booking_for_listing_buyer", lambda *_args: None)
     monkeypatch.setattr(service, "get_processing_fees", lambda _db: (999.0, 1000.0))
 
     preview, error = service.get_booking_preview_for_buyer(object(), user_id=9, request_id=41)
@@ -41,6 +42,9 @@ def test_v2_direct_booking_preview_and_creation_use_same_whole_rupee_amount(
     assert preview.deal_amount == expected
 
     class Query:
+        def __init__(self, model):
+            self.model = model
+
         def filter(self, *_args):
             return self
 
@@ -48,11 +52,11 @@ def test_v2_direct_booking_preview_and_creation_use_same_whole_rupee_amount(
             return self
 
         def first(self):
-            return listing
+            return listing if self.model is SellLandRequest else None
 
     class DB:
-        def query(self, _model):
-            return Query()
+        def query(self, model):
+            return Query(model)
 
         def rollback(self):
             pass
@@ -115,7 +119,7 @@ def test_v2_accepted_offer_amount_does_not_use_land_area(monkeypatch):
         "_derive_buyer_booking_state",
         lambda **_kwargs: (None, None, False, None),
     )
-    monkeypatch.setattr(service, "get_booking_for_listing_buyer", lambda *_args: None)
+    monkeypatch.setattr(service, "get_current_booking_for_listing_buyer", lambda *_args: None)
     monkeypatch.setattr(service, "get_processing_fees", lambda _db: (999.0, 1000.0))
 
     preview, error = service.get_booking_preview_for_buyer(object(), user_id=9, request_id=51)

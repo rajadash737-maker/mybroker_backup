@@ -1,4 +1,4 @@
-package com.example.mybroker_admin.notification
+﻿package com.example.mybroker_admin.notification
 
 import android.content.Intent
 import com.google.firebase.messaging.RemoteMessage
@@ -20,6 +20,10 @@ data class NotificationData(
         const val TYPE_FINAL_APPROVAL_REJECTED = "FINAL_APPROVAL_REJECTED"
         const val TYPE_LISTING_LOCKED_FOR_ADMIN = "LISTING_LOCKED_FOR_ADMIN"
         const val TYPE_BOOKING_PAYMENT_SUCCESS = "BOOKING_PAYMENT_SUCCESS"
+        const val TYPE_SITE_VISIT_ASSIGNED = "SITE_VISIT_ASSIGNED"
+        const val TYPE_SITE_VISIT_ASSIGNMENT_REMOVED = "SITE_VISIT_ASSIGNMENT_REMOVED"
+        const val TYPE_SITE_VISIT_COMPLETED = "SITE_VISIT_COMPLETED"
+        const val TYPE_SITE_VISIT_COMPLETION_CODE_READY = "SITE_VISIT_COMPLETION_CODE_READY"
         const val TYPE_REGISTRY_SCHEDULED = "REGISTRY_SCHEDULED"
         const val TYPE_REGISTRY_IN_PROCESS = "REGISTRY_IN_PROCESS"
         const val TYPE_REGISTRY_DONE = "REGISTRY_DONE"
@@ -55,3 +59,4 @@ data class NotificationData(
         }
     }
 }
+

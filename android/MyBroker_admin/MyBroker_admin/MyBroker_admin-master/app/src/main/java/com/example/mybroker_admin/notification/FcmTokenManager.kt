@@ -18,14 +18,13 @@ object FcmTokenManager {
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
                     val token = task.result?.trim().orEmpty()
-                    Log.d("FCM_DEBUG", "Token: $token")
                     if (token.isNotEmpty()) {
                         onNewToken(context, token)
                     } else {
-                        Log.w("FCM_DEBUG", "Token empty after fetch")
+                        Log.w(TAG, "Token refresh returned an empty value")
                     }
                 } else {
-                    Log.e("FCM_DEBUG", "Token failed", task.exception)
+                    Log.w(TAG, "Token refresh failed (${task.exception?.javaClass?.simpleName ?: "unknown"})")
                 }
             }
     }
@@ -33,7 +32,7 @@ object FcmTokenManager {
     fun onNewToken(context: Context, token: String) {
         val cleaned = token.trim()
         if (cleaned.isEmpty()) {
-            Log.w(TAG, "Token empty after trim; skipping")
+            Log.w(TAG, "Token refresh returned an empty value")
             return
         }
         SessionManager.saveFcmToken(cleaned)
@@ -44,23 +43,19 @@ object FcmTokenManager {
         val token = SessionManager.fcmToken?.trim().orEmpty()
         val accessToken = SessionManager.accessToken
         if (token.isEmpty() || accessToken.isNullOrBlank()) {
-            Log.d("FCM_DEBUG", "Token sync skipped (token or access token missing)")
             return
         }
         if (!force && SessionManager.fcmTokenSynced == token) {
-            Log.d("FCM_DEBUG", "Token already synced; skipping")
             return
         }
 
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
-                Log.d("FCM_DEBUG", "Sending token to backend")
                 ApiClient.profileApi.registerFcmToken(FcmTokenRequestDto(token))
             }.onSuccess {
                 SessionManager.saveFcmTokenSynced(token)
-                Log.d("FCM_DEBUG", "FCM token synced")
             }.onFailure { err ->
-                Log.w("FCM_DEBUG", "Failed to sync FCM token", err)
+                Log.w(TAG, "Token registration failed (${err.javaClass.simpleName})")
             }
         }
     }

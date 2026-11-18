@@ -1,4 +1,4 @@
-
+﻿
 import java.util.Properties
 
 plugins {
@@ -13,7 +13,7 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-val localBaseUrl = localProps.getProperty("BASE_URL") ?: "http://10.44.238.22:8000/"
+val localBaseUrl = localProps.getProperty("BASE_URL") ?: "http://10.0.2.2:8000/"
 val localRazorpayKeyId = localProps.getProperty("RAZORPAY_KEY_ID") ?: "rzp_test_SZkZj6jXN4IGTj"
 // Put GOOGLE_WEB_CLIENT_ID in ignored local.properties; it is compiled into BuildConfig for Credential Manager.
 val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
@@ -158,8 +158,9 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    // 🔥 Firebase (add this)
+    // ðŸ”¥ Firebase (add this)
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-messaging")
 }
+

@@ -11,6 +11,7 @@ import com.example.mybroker_admin.data.remote.api.ProfileApi
 import com.example.mybroker_admin.data.remote.api.SettingsApi
 import com.example.mybroker_admin.data.remote.api.StaffAnalyticsApi
 import com.example.mybroker_admin.data.remote.api.StaffApi
+import com.example.mybroker_admin.feature.sitevisit.SiteVisitApi
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import retrofit2.Retrofit
@@ -20,6 +21,8 @@ import retrofit2.http.GET
 import retrofit2.http.Streaming
 import retrofit2.http.Url
 import java.io.IOException
+import java.util.concurrent.TimeUnit
+import com.example.mybroker_admin.data.remote.api.BackendHealthApi
 
 object ApiClient {
     private const val BASE_URL = AppEnv.BASE_URL
@@ -77,15 +80,23 @@ object ApiClient {
     private val refreshRetrofit: Retrofit by lazy {
         Retrofit.Builder()
             .baseUrl(BASE_URL)
-            .client(OkHttpClient.Builder().build())
+            .client(OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }
 
     private val refreshApi: AuthApi by lazy { refreshRetrofit.create(AuthApi::class.java) }
+    val healthApi: BackendHealthApi by lazy { refreshRetrofit.create(BackendHealthApi::class.java) }
 
     private val okHttpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
             .addInterceptor(AuthInterceptor { accessToken })
             .authenticator(TokenAuthenticator(com.example.mybroker_admin.core.session.SessionManager, refreshApi))
             .build()
@@ -151,6 +162,7 @@ object ApiClient {
     val accountingListingApi: AccountingListingApi by lazy { retrofit.create(AccountingListingApi::class.java) }
     val settingsApi: SettingsApi by lazy { retrofit.create(SettingsApi::class.java) }
     val notificationApi: NotificationApi by lazy { retrofit.create(NotificationApi::class.java) }
+    val siteVisitApi: SiteVisitApi by lazy { retrofit.create(SiteVisitApi::class.java) }
 }
 
 private interface PrivateMediaApi {
@@ -158,3 +170,6 @@ private interface PrivateMediaApi {
     @GET
     suspend fun downloadPdf(@Url url: String): Response<ResponseBody>
 }
+
+
+

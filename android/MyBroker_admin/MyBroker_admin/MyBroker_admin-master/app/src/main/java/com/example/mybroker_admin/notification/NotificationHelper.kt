@@ -14,7 +14,7 @@ object NotificationHelper {
     private const val CHANNEL_ID = "mybroker_general"
     private const val CHANNEL_NAME = "MyBroker Notifications"
 
-    private fun ensureChannel(context: Context) {
+    fun ensureChannel(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (manager.getNotificationChannel(CHANNEL_ID) != null) return
 

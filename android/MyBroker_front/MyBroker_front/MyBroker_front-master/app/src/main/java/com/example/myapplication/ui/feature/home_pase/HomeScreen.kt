@@ -14,6 +14,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.DisposableEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -35,10 +39,21 @@ fun HomeScreen(
     var selectedItem by remember { mutableStateOf("Home") }
     var showLandDialog by remember { mutableStateOf(false) }
     val state by viewModel.uiState.collectAsState()
+    val offerBadge by IncomingOfferCountStore.state.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val context = LocalContext.current
     val notificationVersion by NotificationStore.version.collectAsState()
     val unreadCount = remember(notificationVersion) {
         NotificationStore.unreadCount(context)
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        IncomingOfferCountStore.refresh(context)
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) IncomingOfferCountStore.refresh(context)
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     Scaffold(
@@ -46,9 +61,12 @@ fun HomeScreen(
             HomeTopBar(
                 onNotificationClick = { navController.navigate(Screen.Notifications.route) },
                 onLikeClick = { navController.navigate("wishlist") },
+                onOffersClick = { navController.navigate("offers") },
                 onProfileClick = { navController.navigate("profile") },
                 onLandClick = { showLandDialog = true },
-                unreadCount = unreadCount
+                unreadCount = unreadCount,
+                offerCount = offerBadge.count,
+                offerCountUnavailable = offerBadge.hasError
             )
         },
         bottomBar = {
@@ -91,6 +109,10 @@ fun HomeScreen(
                 onBuyer = {
                     showLandDialog = false
                     navController.navigate("buyer_lands")
+                },
+                onSiteVisitStatus = {
+                    showLandDialog = false
+                    navController.navigate("my_site_visits")
                 }
             )
         }

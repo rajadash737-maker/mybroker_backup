@@ -53,7 +53,7 @@ def test_admin_listing_response_accepts_seller_with_null_mobile(monkeypatch):
     assert validated.model_dump(mode="json")["items"][0]["seller"]["mobile"] is None
 
 
-def test_workflow_summary_counts_only_pending_status(monkeypatch):
+def test_workflow_summary_counts_pending_and_excludes_approved_and_rejected(monkeypatch):
     engine = create_engine("sqlite://")
     Base.metadata.create_all(
         engine,
@@ -67,6 +67,7 @@ def test_workflow_summary_counts_only_pending_status(monkeypatch):
                 SellLandRequest(user_id=1, status=SellLandStatus.PENDING.value),
                 SellLandRequest(user_id=2, status=SellLandStatus.DRAFT.value),
                 SellLandRequest(user_id=3, status=SellLandStatus.APPROVED.value),
+                SellLandRequest(user_id=4, status=SellLandStatus.REJECTED.value),
             ]
         )
         db.commit()
@@ -74,3 +75,17 @@ def test_workflow_summary_counts_only_pending_status(monkeypatch):
         counts = repository.get_admin_workflow_summary_counts(db)
 
     assert counts["pending_admin_review"] == 1
+
+
+def test_workflow_summary_reports_zero_when_no_listings(monkeypatch):
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(
+        engine,
+        tables=[SellLandRequest.__table__, SellLandBooking.__table__],
+    )
+    monkeypatch.setattr(repository, "release_expired_offer_locks", lambda db: 0)
+
+    with Session(engine) as db:
+        counts = repository.get_admin_workflow_summary_counts(db)
+
+    assert counts["pending_admin_review"] == 0

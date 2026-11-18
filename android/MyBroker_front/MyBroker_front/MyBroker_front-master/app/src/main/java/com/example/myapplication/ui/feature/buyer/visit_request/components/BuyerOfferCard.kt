@@ -47,10 +47,12 @@ fun BuyerOfferCard(
     onBookNow: (Int) -> Unit,
     onViewDetails: (BuyerOffer) -> Unit = {},
     onContactAdmin: (Int) -> Unit = {},
+    onRefundDetails: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val timerText = rememberCountdownText(offer.offerLockExpiresAt)
-    val isBooked = offer.bookingStatus.equals("booked", true)
+    val isCancelled = offer.bookingStatus.equals("cancelled", true)
+    val isBooked = isCancelled || offer.bookingStatus.equals("booked", true)
         || offer.bookingStatus.equals("sold", true)
         || offer.bookingStatus.equals("registry_scheduled", true)
         || offer.bookingStatus.equals("in_process", true)
@@ -72,12 +74,14 @@ fun BuyerOfferCard(
         "in_process" -> Color(0xFF1565C0)
         "registry_done" -> Color(0xFF2E7D32)
         "sold" -> Color(0xFF2E7D32)
+        "cancelled" -> Color(0xFFB71C1C)
         "rejected", "expired" -> Color(0xFFB71C1C)
         else -> Color(0xFF455A64)
     }
     val headerColors = remember(offer.bookingStatus) { statusHeaderColors(offer.bookingStatus) }
     val displayStatus = when (offer.bookingStatus.lowercase()) {
         "sold" -> "SOLD"
+        "cancelled" -> "CANCELLED"
         "booked" -> "BOOKED"
         "registry_scheduled" -> "REGISTRY SCHEDULED"
         "in_process" -> "IN PROCESS"
@@ -156,7 +160,7 @@ fun BuyerOfferCard(
 
                 if (isBooked) {
                     AmountRow(
-                        label = stringResource(id = R.string.buyer_final_price),
+                        label = if (isCancelled) "Deal price" else stringResource(id = R.string.buyer_final_price),
                         amount = "₹ ${dealAmount.asAmount()}",
                         highlight = true
                     )
@@ -167,6 +171,22 @@ fun BuyerOfferCard(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    if (isCancelled) {
+                        Text("Cancellation reason: ${offer.cancellationReason ?: "Not provided"}", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            if (offer.refundDecision.equals("NO_REFUND", true)) "No Refund"
+                            else "Approved refund: ₹${(offer.approvedRefundAmount ?: 0.0).asAmount()} · ${offer.refundStatus?.replace('_', ' ') ?: "Status unavailable"}",
+                            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold)
+                        )
+                        if (offer.refundStatus.equals("CONFIRMED", true)) {
+                            Text("Refunded successfully: ₹${(offer.actualRefundedAmount ?: 0.0).asAmount()} · ${offer.refundTransactionReference.orEmpty()} · ${offer.refundConfirmedAt.orEmpty()}", style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (offer.refundDecision.equals("REFUND", true) && offer.bookingId != null) {
+                            OutlinedButton(onClick = { onRefundDetails(offer.bookingId) }, modifier = Modifier.fillMaxWidth()) {
+                                Text(if (offer.refundStatus.equals("AWAITING_BUYER_DETAILS", true)) "Submit UPI for Refund" else "View Refund Details")
+                            }
+                        }
                     }
                 } else {
                     AmountRow(
@@ -251,6 +271,7 @@ private fun statusHeaderColors(status: String): StatusHeaderColors {
         "in_process" -> StatusHeaderColors(Color(0xFFE3F2FD), Color(0xFF0D47A1))
         "registry_done" -> StatusHeaderColors(Color(0xFFE8F5E9), Color(0xFF1B5E20))
         "sold" -> StatusHeaderColors(Color(0xFFE8F5E9), Color(0xFF1B5E20))
+        "cancelled" -> StatusHeaderColors(Color(0xFFFFEBEE), Color(0xFFB71C1C))
         "accepted_book_now" -> StatusHeaderColors(Color(0xFFE8F5E9), Color(0xFF1B5E20))
         "counter_received" -> StatusHeaderColors(Color(0xFFF3E5F5), Color(0xFF4A148C))
         "rejected", "expired" -> StatusHeaderColors(Color(0xFFFFEBEE), Color(0xFFB71C1C))

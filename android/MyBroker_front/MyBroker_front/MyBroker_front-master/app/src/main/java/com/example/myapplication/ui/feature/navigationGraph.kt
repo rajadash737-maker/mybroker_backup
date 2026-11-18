@@ -16,11 +16,13 @@ import com.example.myapplication.ui.feature.auth.SignupScreenWithOtpUI
 import com.example.myapplication.ui.feature.buyer.domain.repository.LandRepository
 import com.example.myapplication.ui.feature.buyer.domain.repository.WishlistRepository
 import com.example.myapplication.ui.feature.buyer.explore.ExploreScreen
+import com.example.myapplication.ui.feature.buyer.explore.Land
 import com.example.myapplication.ui.feature.buyer.explore.ExploreViewModel
 import com.example.myapplication.ui.feature.buyer.explore.ExploreViewModelFactory
 import com.example.myapplication.ui.feature.buyer.land_detail.LandDetailScreen
 import com.example.myapplication.ui.feature.buyer.land_detail.LandDetailViewModel
 import com.example.myapplication.ui.feature.buyer.land_detail.LandDetailViewModelFactory
+import com.example.myapplication.ui.feature.sitevisit.presentation.SiteVisitScreen
 import com.example.myapplication.ui.feature.buyer.map.MapScreen
 import com.example.myapplication.ui.feature.buyer.map.MapViewModel
 import com.example.myapplication.ui.feature.buyer.map.MapViewModelFactory
@@ -35,12 +37,14 @@ import com.example.myapplication.ui.feature.home.profile.ProfileScreen
 import com.example.myapplication.ui.feature.home_pase.HomeScreen
 import com.example.myapplication.ui.feature.home_pase.HomeViewModel
 import com.example.myapplication.ui.feature.home_pase.HomeViewModelFactory
+import com.example.myapplication.ui.feature.home_pase.OffersHubScreen
 import com.example.myapplication.ui.feature.sell_land.navigation.sellLandGraph
 import com.example.myapplication.ui.feature.home.profile.SettingsScreen
 import com.example.myapplication.ui.feature.buyer.payment.BookNowScreen
 import com.example.myapplication.ui.feature.buyer.payment.BookNowSuccessScreen
 import com.example.myapplication.ui.feature.buyer.payment.BookNowViewModel
 import com.example.myapplication.ui.feature.buyer.payment.BookNowViewModelFactory
+import com.example.myapplication.ui.feature.buyer.payment.BuyerBookingRefundScreen
 import com.example.myapplication.ui.feature.transactions.data.repository.TransactionRepositoryImpl
 import com.example.myapplication.ui.feature.transactions.ui.TransactionDetailScreen
 import com.example.myapplication.ui.feature.transactions.ui.TransactionDetailViewModel
@@ -122,6 +126,13 @@ fun NavGraphBuilder.NavigationGraph(
         )
     }
 
+    composable("offers") {
+        OffersHubScreen(
+            onBuyerOffers = { navController.navigate("buyer_lands?incomingOnly=true") },
+            onSellerOffers = { navController.navigate("seller_lands") }
+        )
+    }
+
     sellLandGraph(navController)
 
     composable(route = "explore") { backStackEntry ->
@@ -138,6 +149,14 @@ fun NavGraphBuilder.NavigationGraph(
         ExploreScreen(
             viewModel = exploreViewModel,
             onLandClick = { id -> navController.navigate("land_detail/$id") },
+            onSiteVisitClick = { land ->
+                saveSelectedSiteVisitLand(navController, land)
+                navController.navigate("site_visit/${land.id}")
+            },
+            onCompleteProfileForSiteVisit = { land ->
+                saveSelectedSiteVisitLand(navController, land)
+                navController.navigate("edit_profile?siteVisitLandId=${land.id}")
+            },
             onMapClick = { id -> navController.navigate("map/$id") },
             isWishlistScreen = false
         )
@@ -160,6 +179,7 @@ fun NavGraphBuilder.NavigationGraph(
             landId = landId,
             viewModel = landDetailViewModel,
             onBookNowClick = { id -> navController.navigate("book_now/$id") },
+            onSiteVisitClick = { id -> navController.navigate("site_visit/$id") },
             onViewMapClick = { id -> navController.navigate("map/$id") },
             onEditProfileForOffer = { id -> navController.navigate("edit_profile?offerLandId=$id") },
             resumeOfferAfterProfile = resumeOfferAfterProfile,
@@ -188,6 +208,7 @@ fun NavGraphBuilder.NavigationGraph(
             landId = landId,
             viewModel = landDetailViewModel,
             onBookNowClick = { id -> navController.navigate("book_now/$id") },
+            onSiteVisitClick = { id -> navController.navigate("site_visit/$id") },
             onViewMapClick = { id -> navController.navigate("map/$id") },
             onEditProfileForOffer = { id -> navController.navigate("edit_profile?offerLandId=$id") },
             resumeOfferAfterProfile = resumeOfferAfterProfile,
@@ -195,6 +216,26 @@ fun NavGraphBuilder.NavigationGraph(
                 backStackEntry.savedStateHandle["resume_offer_after_profile"] = false
             }
         )
+    }
+
+    composable(
+        route = "site_visit/{landId}",
+        arguments = listOf(navArgument("landId") { type = NavType.IntType })
+    ) { entry ->
+        val listingId = entry.arguments?.getInt("landId") ?: return@composable
+        SiteVisitScreen(
+            listingId = listingId,
+            onBack = { navController.popBackStack() },
+            onViewStatus = { navController.navigate("my_site_visits") }
+        )
+    }
+
+    composable("my_site_visits") { SiteVisitScreen(listingId = 0, onBack = { navController.popBackStack() }) }
+    composable(
+        route = "my_site_visits/{bookingId}",
+        arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+    ) { entry ->
+        SiteVisitScreen(listingId = 0, selectedBookingId = entry.arguments?.getInt("bookingId"), onBack = { navController.popBackStack() })
     }
 
     composable(
@@ -245,6 +286,14 @@ fun NavGraphBuilder.NavigationGraph(
         ExploreScreen(
             viewModel = exploreViewModel,
             onLandClick = { id -> navController.navigate("land_detail/$id") },
+            onSiteVisitClick = { land ->
+                saveSelectedSiteVisitLand(navController, land)
+                navController.navigate("site_visit/${land.id}")
+            },
+            onCompleteProfileForSiteVisit = { land ->
+                saveSelectedSiteVisitLand(navController, land)
+                navController.navigate("edit_profile?siteVisitLandId=${land.id}")
+            },
             onMapClick = { id -> navController.navigate("map/$id") },
             isWishlistScreen = true
         )
@@ -277,7 +326,13 @@ fun NavGraphBuilder.NavigationGraph(
         TransactionDetailScreen(viewModel = vm, onBack = { navController.popBackStack() })
     }
 
-    composable(route = "buyer_lands") { backStackEntry ->
+    composable(
+        route = "buyer_lands?incomingOnly={incomingOnly}",
+        arguments = listOf(navArgument("incomingOnly") {
+            type = NavType.BoolType
+            defaultValue = false
+        })
+    ) { backStackEntry ->
         val buyerLandsViewModel: BuyerLandsViewModel = viewModel(
             viewModelStoreOwner = backStackEntry,
             factory = BuyerLandsViewModelFactory(landRepository)
@@ -285,6 +340,7 @@ fun NavGraphBuilder.NavigationGraph(
 
         BuyerLandsScreen(
             viewModel = buyerLandsViewModel,
+            incomingOnly = backStackEntry.arguments?.getBoolean("incomingOnly") ?: false,
             onBookNow = { requestId -> navController.navigate("book_now/$requestId") },
             onViewDetails = { offer ->
                 val dealAmount = if (offer.finalAmount > 0.0) offer.finalAmount else offer.offeredAmount
@@ -296,7 +352,8 @@ fun NavGraphBuilder.NavigationGraph(
                 navController.navigate(
                     "buyer_land_details/${offer.requestId}?dealAmount=$dealAmountParam&bookingStatus=$bookingStatus&registryDate=$registryDate&registryTime=$registryTime&registryLocation=$registryLocation"
                 )
-            }
+            },
+            onRefundDetails = { bookingId -> navController.navigate("buyer_booking_refund/$bookingId") }
 
         )
 
@@ -334,6 +391,14 @@ fun NavGraphBuilder.NavigationGraph(
             registryTime = registryTime,
             registryLocation = registryLocation
         )
+    }
+
+    composable(
+        route = "buyer_booking_refund/{bookingId}",
+        arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+    ) { entry ->
+        val bookingId = entry.arguments?.getInt("bookingId") ?: return@composable
+        BuyerBookingRefundScreen(bookingId = bookingId, onBack = { navController.popBackStack() })
     }
 
     composable(
@@ -430,20 +495,45 @@ fun NavGraphBuilder.NavigationGraph(
     }
 
     composable(
-        route = "edit_profile?offerLandId={offerLandId}",
-        arguments = listOf(navArgument("offerLandId") {
-            type = NavType.IntType
-            defaultValue = -1
-        })
+        route = "edit_profile?offerLandId={offerLandId}&siteVisitLandId={siteVisitLandId}",
+        arguments = listOf(
+            navArgument("offerLandId") {
+                type = NavType.IntType
+                defaultValue = -1
+            },
+            navArgument("siteVisitLandId") {
+                type = NavType.IntType
+                defaultValue = -1
+            }
+        )
     ) { backStackEntry ->
         val offerLandId = backStackEntry.arguments?.getInt("offerLandId") ?: -1
+        val siteVisitLandId = backStackEntry.arguments?.getInt("siteVisitLandId") ?: -1
         EditProfileScreen(
             returnToOfferAfterSave = offerLandId > 0,
+            returnToSiteVisitAfterSave = siteVisitLandId > 0,
             onSaveClick = {
                 navController.previousBackStackEntry?.savedStateHandle?.set("resume_offer_after_profile", true)
                 navController.popBackStack()
+            },
+            onSiteVisitSaveClick = {
+                navController.popBackStack()
+                navController.navigate("site_visit/$siteVisitLandId") { launchSingleTop = true }
             }
         )
     }
 }
+
+private fun saveSelectedSiteVisitLand(navController: NavHostController, land: Land) {
+    navController.currentBackStackEntry?.savedStateHandle?.apply {
+        set("site_visit_selected_land_id", land.id)
+        set("site_visit_selected_land_title", land.title)
+        set("site_visit_selected_land_location", land.displayAddress)
+        set("site_visit_selected_land_price", land.formattedPrice)
+        set("site_visit_selected_land_area", land.formattedArea)
+        set("site_visit_selected_land_image", land.coverImageUrl)
+    }
+}
+
+
 

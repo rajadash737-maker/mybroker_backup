@@ -1,13 +1,20 @@
 from decimal import Decimal
+from concurrent.futures import ThreadPoolExecutor
+import importlib.util
+import threading
+from pathlib import Path
 
 import pytest
-from sqlalchemy import create_engine
+from alembic.migration import MigrationContext
+from alembic.operations import Operations
+from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.database import Base
 from app.payments import service as payment_service
-from app.payments.models import RazorpayPaymentOrder
+from app.payments.models import RazorpayPaymentOrder, RazorpayWebhookLog
 from app.payments.schemas import CreateOrderRequest, VerifyPaymentRequest
 from app.sell_land.constants import BookingStatus, PaymentStatus, SellLandStatus
 from app.sell_land.models import SellLandBooking, SellLandPayment, SellLandRequest
@@ -222,6 +229,165 @@ def test_duplicate_webhook_is_idempotent(db, payment_fixture):
     assert booking.payment_status == PaymentStatus.SUCCESS.value
     assert listing.status == SellLandStatus.BOOKED.value
     assert db.query(RazorpayPaymentOrder).filter_by(order_id=order.order_id).count() == 1
+    event_logs = db.query(RazorpayWebhookLog).filter_by(event_key=event["event_id"]).all()
+    assert len(event_logs) == 1
+    assert event_logs[0].event_id == event["event_id"]
+
+
+def test_legacy_duplicate_event_ids_remain_compatible_when_canonical_key_is_null(db):
+    for payload in ("legacy first", "legacy second"):
+        db.add(
+            RazorpayWebhookLog(
+                event_id="legacy-payload-id",
+                event_key=None,
+                event="payment.captured",
+                payload=payload,
+                status="processed",
+            )
+        )
+    db.commit()
+
+    assert db.query(RazorpayWebhookLog).filter_by(
+        event_id="legacy-payload-id", event_key=None
+    ).count() == 2
+
+
+def test_event_key_migration_preserves_legacy_duplicates_and_enforces_new_uniqueness():
+    migration_path = (
+        Path(__file__).resolve().parents[1]
+        / "alembic"
+        / "versions"
+        / "20261115_0041_unique_razorpay_webhook_event_key.py"
+    )
+    spec = importlib.util.spec_from_file_location("webhook_event_key_migration", migration_path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE razorpay_webhook_logs (id INTEGER PRIMARY KEY, event_id VARCHAR(80))"
+        ))
+        connection.execute(text(
+            "INSERT INTO razorpay_webhook_logs (event_id) VALUES ('legacy-duplicate'), ('legacy-duplicate'), (NULL)"
+        ))
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+
+    assert "event_key" in {column["name"] for column in inspect(engine).get_columns("razorpay_webhook_logs")}
+    with engine.begin() as connection:
+        assert connection.execute(text(
+            "SELECT COUNT(*) FROM razorpay_webhook_logs WHERE event_id = 'legacy-duplicate' AND event_key IS NULL"
+        )).scalar_one() == 2
+        connection.execute(text(
+            "INSERT INTO razorpay_webhook_logs (event_id, event_key) VALUES ('new-a', 'evt_unique_1')"
+        ))
+        with pytest.raises(IntegrityError):
+            with connection.begin_nested():
+                connection.execute(text(
+                    "INSERT INTO razorpay_webhook_logs (event_id, event_key) VALUES ('new-b', 'evt_unique_1')"
+                ))
+    engine.dispose()
+
+
+def test_webhook_claim_rolls_back_and_same_event_can_retry(db, payment_fixture):
+    _, _, _, _, booking, order = payment_fixture
+    args = dict(
+        event="payment.captured",
+        event_id="evt_retry_after_rollback",
+        payload_json="{}",
+        signature="verified-test-signature",
+        order_id=order.order_id,
+        payment_id="pay_test_12345",
+        payment_status="captured",
+        amount_paise=order.amount_paise - 1,
+        currency=order.currency,
+    )
+
+    failed, error = payment_service.handle_webhook_event(db, **args)
+    assert not failed and "amount" in error.lower()
+    assert db.query(RazorpayWebhookLog).filter_by(event_key=args["event_id"]).count() == 0
+    db.refresh(order)
+    db.refresh(booking)
+    assert order.status == "CREATED"
+    assert booking.payment_status == PaymentStatus.INITIATED.value
+
+    args["amount_paise"] = order.amount_paise
+    retried, retry_error = payment_service.handle_webhook_event(db, **args)
+    assert retried and retry_error is None
+    assert db.query(RazorpayWebhookLog).filter_by(event_key=args["event_id"]).count() == 1
+    db.refresh(order)
+    assert order.status == "SUCCESS"
+
+
+def test_concurrent_duplicate_webhook_delivery_creates_one_log_and_one_transition(tmp_path, monkeypatch):
+    engine = create_engine(
+        f"sqlite:///{tmp_path / 'duplicate_webhook_race.db'}",
+        connect_args={"check_same_thread": False, "timeout": 10},
+    )
+    Base.metadata.create_all(engine)
+    with Session(engine) as session:
+        seller = User(fullname="Seller", email="dupe-seller@example.test", mobile="9111111111", password_hash="hash")
+        buyer = User(fullname="Buyer", email="dupe-buyer@example.test", mobile="9222222222", password_hash="hash")
+        session.add_all([seller, buyer])
+        session.flush()
+        listing = SellLandRequest(user_id=seller.id, title="Duplicate event listing", status=SellLandStatus.LIVE.value)
+        session.add(listing)
+        session.flush()
+        booking = SellLandBooking(
+            request_id=listing.id,
+            buyer_id=buyer.id,
+            buyer_name="Buyer",
+            buyer_mobile=buyer.mobile,
+            deal_amount=Decimal("500000"),
+            booking_fee_amount=Decimal("1234.56"),
+            payment_status=PaymentStatus.INITIATED.value,
+            booking_status=BookingStatus.BOOKED.value,
+        )
+        order = RazorpayPaymentOrder(
+            user_id=buyer.id,
+            property_id=listing.id,
+            amount=1234.56,
+            amount_paise=123456,
+            currency="INR",
+            order_id="order_duplicate_event_race",
+            status="CREATED",
+        )
+        session.add_all([booking, order])
+        session.commit()
+        order_id = order.order_id
+
+    monkeypatch.setattr(payment_service, "_notify_buyer_booking_paid", lambda *_args, **_kwargs: None)
+    start = threading.Barrier(2, timeout=10)
+    args = dict(
+        event="payment.captured",
+        event_id="evt_concurrent_duplicate",
+        payload_json="{}",
+        signature="verified-test-signature",
+        order_id=order_id,
+        payment_id="pay_duplicate_event_race",
+        payment_status="captured",
+        amount_paise=123456,
+        currency="INR",
+    )
+
+    def deliver():
+        with Session(engine) as session:
+            start.wait()
+            return payment_service.handle_webhook_event(session, **args)
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(deliver) for _ in range(2)]
+        results = [future.result(timeout=20) for future in futures]
+
+    with Session(engine) as session:
+        order = session.query(RazorpayPaymentOrder).filter_by(order_id=order_id).one()
+        booking = session.query(SellLandBooking).one()
+        logs = session.query(RazorpayWebhookLog).filter_by(event_key="evt_concurrent_duplicate").all()
+        assert results == [(True, None), (True, None)]
+        assert len(logs) == 1
+        assert order.status == "SUCCESS" and order.payment_id == "pay_duplicate_event_race"
+        assert booking.payment_status == PaymentStatus.SUCCESS.value
+    engine.dispose()
 
 
 def test_seller_payment_callback_verifies_amount_owner_and_replay(db, payment_fixture, monkeypatch):

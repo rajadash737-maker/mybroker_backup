@@ -4,7 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env", override=False)
 
 
 def _to_bool(value: str | None, default: bool = False) -> bool:
@@ -48,6 +48,10 @@ class Settings:
     firebase_credentials_path: str = os.getenv("FIREBASE_CREDENTIALS_PATH", "serviceAccountKey.json")
     firebase_credentials_json: str = os.getenv("FIREBASE_CREDENTIALS_JSON", "")
     google_oauth_client_ids: tuple[str, ...] = _csv_values(os.getenv("GOOGLE_OAUTH_CLIENT_IDS"))
+    site_visit_otp_encryption_key: str = os.getenv("SITE_VISIT_OTP_ENCRYPTION_KEY", "")
+    site_visit_otp_hmac_key: str = os.getenv("SITE_VISIT_OTP_HMAC_KEY", "")
+    site_visit_refund_encryption_key: str = os.getenv("SITE_VISIT_REFUND_ENCRYPTION_KEY", "")
+    land_booking_refund_encryption_key: str = os.getenv("LAND_BOOKING_REFUND_ENCRYPTION_KEY", "")
 
 
 settings = Settings()

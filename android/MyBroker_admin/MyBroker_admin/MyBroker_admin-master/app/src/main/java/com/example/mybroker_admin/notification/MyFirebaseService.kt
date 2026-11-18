@@ -1,6 +1,5 @@
 package com.example.mybroker_admin.notification
 
-import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
@@ -35,7 +34,6 @@ class MyFirebaseService : FirebaseMessagingService() {
     }
 
     override fun onNewToken(token: String) {
-        Log.d("FCM", "New token: $token")
         FcmTokenManager.onNewToken(this, token)
     }
 }

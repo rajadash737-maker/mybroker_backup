@@ -1,8 +1,7 @@
-package com.example.myapplication.core.config
+﻿package com.example.myapplication.core.config
 
-
+import com.example.myapplication.BuildConfig
 
 object AppEnv {
-    const val BASE_URL = "http://10.18.79.22:8000/"
+    const val BASE_URL = BuildConfig.BASE_URL
 }
-

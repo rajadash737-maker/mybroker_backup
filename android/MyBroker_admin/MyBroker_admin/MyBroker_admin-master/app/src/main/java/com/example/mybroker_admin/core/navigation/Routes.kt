@@ -1,4 +1,4 @@
-package com.example.mybroker_admin.core.navigation
+﻿package com.example.mybroker_admin.core.navigation
 
 import android.net.Uri
 
@@ -6,6 +6,9 @@ object Routes {
     const val LOGIN = "login"
     const val SUPER_ADMIN_DASHBOARD = "super_admin_dashboard"
     const val SUPER_ADMIN_REVENUE = "super_admin_revenue"
+    const val SUPER_ADMIN_SITE_VISIT_AUDIT = "super_admin_site_visit_audit"
+    const val SUPER_ADMIN_SITE_VISIT_AUDIT_DETAIL = "super_admin_site_visit_audit/{bookingId}"
+    fun superAdminSiteVisitAuditDetail(bookingId: Int) = "super_admin_site_visit_audit/$bookingId"
     const val SOCIAL_LINKS = "social_links"
     const val BANNERS = "banners"
     const val PROCESSING_FEES = "processing_fees"
@@ -22,6 +25,12 @@ object Routes {
 
     const val ADMIN_DASHBOARD = "admin_dashboard"
     const val FIELD_DASHBOARD = "field_dashboard"
+    const val SITE_VISITS = "site_visits"
+    const val SITE_VISIT_ADMIN_DETAIL = "site_visit_admin_detail/{bookingId}"
+    fun siteVisitAdminDetail(bookingId: Int) = "site_visit_admin_detail/$bookingId"
+    const val FIELD_SITE_VISITS = "field_site_visits"
+    const val FIELD_SITE_VISIT_BOOKING_DETAIL = "field_site_visit_booking/{bookingId}"
+    fun fieldSiteVisitBookingDetail(bookingId: Int) = "field_site_visit_booking/$bookingId"
 
     const val LISTINGS = "listings"
     const val FINANCE = "finance"
@@ -63,6 +72,10 @@ object Routes {
     const val ACCOUNTING_DASHBOARD = "accounting_dashboard"
 
     const val ACCOUNTING_REFUND_LIST = "accounting_refund_list"
+    const val ACCOUNTING_SITE_VISIT_REFUNDS = "accounting_site_visit_refunds"
+    const val ACCOUNTING_PROPERTY_BOOKING_REFUNDS = "accounting_property_booking_refunds"
+    const val ACCOUNTING_SITE_VISIT_REFUND_DETAIL = "accounting_site_visit_refunds/{bookingId}"
+    fun accountingSiteVisitRefundDetail(bookingId: Int) = "accounting_site_visit_refunds/$bookingId"
     const val ACCOUNTING_COMPLETED_TRANSACTIONS = "accounting_completed_transactions"
     const val ACCOUNTING_TRANSACTION_DETAIL = "accounting_transaction_detail/{listingId}"
     fun accountingTransactionDetail(listingId: String) =
@@ -84,3 +97,4 @@ object Routes {
     const val REGISTRY_DETAIL = "registry_detail/{assignmentId}"
     fun registryDetail(assignmentId: String) = "registry_detail/$assignmentId"
 }
+

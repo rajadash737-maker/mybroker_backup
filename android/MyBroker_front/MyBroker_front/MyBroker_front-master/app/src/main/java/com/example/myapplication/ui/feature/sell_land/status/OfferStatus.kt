@@ -7,3 +7,12 @@ enum class OfferStatus {
     COUNTERED,
     EXPIRED
 }
+
+fun offerStatusFromApi(raw: String): OfferStatus = when (raw.trim().uppercase()) {
+    "PENDING" -> OfferStatus.PENDING
+    "ACCEPTED" -> OfferStatus.ACCEPTED
+    "REJECTED" -> OfferStatus.REJECTED
+    "COUNTERED" -> OfferStatus.COUNTERED
+    "EXPIRED" -> OfferStatus.EXPIRED
+    else -> OfferStatus.PENDING
+}

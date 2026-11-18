@@ -42,6 +42,7 @@ import androidx.navigation.NavController
 import com.example.myapplication.R
 import com.example.myapplication.auth.GoogleSignInCoordinator
 import com.example.myapplication.auth.GoogleSignInResult
+import com.example.myapplication.notification.FcmTokenManager
 import com.example.myapplication.network.ApiClient
 import com.example.myapplication.network.AuthRepository
 import com.example.myapplication.network.SessionManager
@@ -113,6 +114,10 @@ fun SignupScreenWithOtpUI(navController: NavController) {
                                     is GoogleSignInResult.Success -> {
                                         authRepository.loginWithGoogle(signIn.idToken)
                                             .onSuccess {
+                                                FcmTokenManager.tryRegisterPendingToken(
+                                                    context = context.applicationContext,
+                                                    force = true
+                                                )
                                                 navController.navigate(Screen.Home.route) {
                                                     popUpTo("login") { inclusive = true }
                                                     launchSingleTop = true

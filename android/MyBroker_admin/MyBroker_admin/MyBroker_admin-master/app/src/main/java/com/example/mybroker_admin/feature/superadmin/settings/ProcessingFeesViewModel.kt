@@ -12,10 +12,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import retrofit2.HttpException
+import java.math.BigDecimal
 
 data class ProcessingFeesUiModel(
     val sellerFee: String = "",
-    val buyerFee: String = ""
+    val buyerFee: String = "",
+    val siteVisitFee: String = ""
 )
 
 data class ProcessingFeesUiState(
@@ -42,7 +44,8 @@ class ProcessingFeesViewModel(
                         isLoading = false,
                         data = ProcessingFeesUiModel(
                             sellerFee = formatFee(dto.seller_processing_fee),
-                            buyerFee = formatFee(dto.buyer_processing_fee)
+                            buyerFee = formatFee(dto.buyer_processing_fee),
+                            siteVisitFee = formatFee(dto.site_visit_fee)
                         )
                     )
                 }
@@ -57,13 +60,18 @@ class ProcessingFeesViewModel(
 
     fun onSellerFeeChange(v: String) = updateData { it.copy(sellerFee = v) }
     fun onBuyerFeeChange(v: String) = updateData { it.copy(buyerFee = v) }
+    fun onSiteVisitFeeChange(v: String) = updateData { it.copy(siteVisitFee = v) }
 
     fun saveFees() {
         val data = _uiState.value.data
         val seller = data.sellerFee.trim().toDoubleOrNull()
         val buyer = data.buyerFee.trim().toDoubleOrNull()
+        val siteVisit = data.siteVisitFee.trim().toBigDecimalOrNull()
 
-        if (seller == null || buyer == null || seller < 0 || buyer < 0) {
+        if (seller == null || buyer == null || seller < 0 || buyer < 0 ||
+            siteVisit == null || siteVisit < BigDecimal.ZERO ||
+            siteVisit > BigDecimal("100000.00") || siteVisit.scale().coerceAtLeast(0) > 2
+        ) {
             _uiState.value = _uiState.value.copy(message = "Please enter valid fee amounts")
             return
         }
@@ -75,7 +83,8 @@ class ProcessingFeesViewModel(
                 repository.updateProcessingFees(
                     ProcessingFeeUpdateRequest(
                         seller_processing_fee = seller,
-                        buyer_processing_fee = buyer
+                        buyer_processing_fee = buyer,
+                        site_visit_fee = siteVisit
                     )
                 )
             }.onSuccess {
@@ -97,6 +106,8 @@ class ProcessingFeesViewModel(
     private fun formatFee(value: Double): String {
         return if (value % 1.0 == 0.0) value.toInt().toString() else value.toString()
     }
+
+    private fun formatFee(value: BigDecimal): String = value.stripTrailingZeros().toPlainString()
 
     private fun parseApiError(e: Throwable, defaultMsg: String): String {
         if (e is HttpException) {

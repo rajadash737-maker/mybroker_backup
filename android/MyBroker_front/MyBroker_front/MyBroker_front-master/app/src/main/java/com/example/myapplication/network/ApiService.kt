@@ -1,4 +1,4 @@
-package com.example.myapplication.network
+﻿package com.example.myapplication.network
 
 import com.example.myapplication.ui.feature.sell_land.model.BoundaryRequest
 import com.example.myapplication.ui.feature.sell_land.model.CancelListingRequest
@@ -39,8 +39,17 @@ import retrofit2.http.PUT
 import retrofit2.http.Part
 import retrofit2.http.Path
 import retrofit2.http.Query
+import com.example.myapplication.ui.feature.buyer.data.remote.dto.IncomingOfferCountDto
+
+data class BackendHealthResponse(val status: String)
 
 interface ApiService {
+
+    @GET("sell-land/offers/incoming-count")
+    suspend fun getIncomingOfferCount(): IncomingOfferCountDto
+    @GET("health")
+    suspend fun health(): Response<BackendHealthResponse>
+
 
     @POST("auth/send-otp")
     suspend fun sendOtp(@Body body: SendOtpRequest): Response<StatusResponse>
@@ -239,3 +248,4 @@ interface ApiService {
         @Body body: NotificationReadRequestDto
     ): Response<NotificationListResponseDto>
 }
+

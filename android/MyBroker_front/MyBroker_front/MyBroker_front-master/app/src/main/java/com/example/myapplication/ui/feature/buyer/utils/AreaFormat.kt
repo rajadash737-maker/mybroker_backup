@@ -3,9 +3,9 @@ package com.example.myapplication.ui.feature.buyer.utils
 import java.text.NumberFormat
 import java.util.Locale
 
-fun formatIndianNumber(value: Double): String {
+fun formatIndianNumber(value: Double, maxFractionDigits: Int = 2): String {
     return NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
-        maximumFractionDigits = 2
+        maximumFractionDigits = maxFractionDigits.coerceAtLeast(0)
         minimumFractionDigits = 0
     }.format(value)
 }
@@ -22,4 +22,11 @@ fun formatAreaWithUnit(area: Double, areaUnit: String): String {
     }
 
     return listOf(formattedArea, displayUnit).filter { it.isNotBlank() }.joinToString(" ")
+}
+
+fun formatIndianCurrency(value: Double): String {
+    return NumberFormat.getCurrencyInstance(Locale("en", "IN")).apply {
+        maximumFractionDigits = 2
+        minimumFractionDigits = 0
+    }.format(value)
 }

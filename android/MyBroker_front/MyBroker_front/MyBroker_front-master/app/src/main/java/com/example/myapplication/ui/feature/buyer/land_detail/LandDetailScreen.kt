@@ -1,4 +1,4 @@
-package com.example.myapplication.ui.feature.buyer.land_detail
+﻿package com.example.myapplication.ui.feature.buyer.land_detail
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -43,6 +43,7 @@ fun LandDetailScreen(
     landId: Int,
     viewModel: LandDetailViewModel,
     onBookNowClick: (Int) -> Unit = {},
+    onSiteVisitClick: (Int) -> Unit = {},
     onViewMapClick: (Int) -> Unit = {},
     onEditProfileForOffer: (Int) -> Unit = {},
     resumeOfferAfterProfile: Boolean = false,
@@ -182,7 +183,15 @@ fun LandDetailScreen(
                         onOpenMapClick = { onViewMapClick(land.id) }
                     )
                 }
-            }
+            
+                if ((sessionManager.getUserId() ?: 0) != land.sellerUserId) {
+                    item {
+                        androidx.compose.material3.Button(onClick = { onSiteVisitClick(land.id) }, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                            Text("Schedule Site Visit")
+                        }
+                    }
+                }
+}
         }
     }
 
@@ -218,3 +227,5 @@ fun LandDetailScreen(
     }
 
 }
+
+

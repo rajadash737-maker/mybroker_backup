@@ -108,6 +108,7 @@ class BookingStatus(str, Enum):
     REGISTRY_SCHEDULED = "registry_scheduled"
     REGISTRY_DONE = "registry_done"
     SOLD = "sold"
+    CANCELLED = "cancelled"
 
 
 DEFAULT_SELL_LAND_STATUS = SellLandStatus.PENDING.value

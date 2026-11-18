@@ -2,10 +2,19 @@ package com.example.mybroker_admin.data.repository
 
 import com.example.mybroker_admin.data.remote.api.AccountingListingApi
 import com.example.mybroker_admin.data.remote.dto.AccountingConfirmRefundRequestDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingRefundConfirmRequestDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingRefundFailRequestDto
 
 class AccountingListingRepository(
     private val api: AccountingListingApi
 ) {
+    suspend fun getPropertyBookingRefunds(skip: Int = 0, limit: Int = 50, includeHistory: Boolean = false) =
+        api.getPropertyBookingRefunds(skip, limit, includeHistory)
+    suspend fun getPropertyBookingRefund(id: Int) = api.getPropertyBookingRefund(id)
+    suspend fun confirmPropertyBookingRefund(id: Int, amount: Double, reference: String, note: String?) =
+        api.confirmPropertyBookingRefund(id, PropertyBookingRefundConfirmRequestDto(amount, reference, note))
+    suspend fun failPropertyBookingRefund(id: Int, reason: String) =
+        api.failPropertyBookingRefund(id, PropertyBookingRefundFailRequestDto(reason))
 
     suspend fun getPendingRefunds(skip: Int = 0, limit: Int = 20) =
         api.getPendingRefunds(skip = skip, limit = limit)

@@ -12,6 +12,13 @@ from app.sell_land.admin_schemas import (
     AccountingCompletedTransactionListResponse,
     AccountingCompletedTransactionDetailResponse,
     AccountingDashboardSummaryResponse,
+    PropertyBookingCancellationRequest,
+    PropertyBookingCancellationResponse,
+    PropertyBookingCancellationPreview,
+    PropertyBookingRefundQueueResponse,
+    AccountingPropertyBookingRefundDetail,
+    AccountingPropertyBookingRefundConfirmRequest,
+    AccountingPropertyBookingRefundFailRequest,
     RevenueRangeType,
     SuperAdminRevenueDashboardResponse,
     AdminAssignCaseRequest,
@@ -79,10 +86,77 @@ from app.sell_land.admin_service import (
     update_listing_instagram_url,
 )
 from app.sell_land.constants import SellLandStatus
+from app.sell_land.property_booking_refunds import (
+    cancel_property_booking,
+    get_booking_cancellation_preview,
+    list_property_booking_refunds,
+    get_accounting_property_booking_refund,
+    confirm_property_booking_refund,
+    fail_property_booking_refund,
+)
 from app.users.model import User
 from app.users.roles import UserRole
 
 router = APIRouter(prefix="/admin/sell-land", tags=["Admin Sell Land Review"])
+
+
+@router.post("/bookings/{booking_id}/cancel", response_model=PropertyBookingCancellationResponse)
+def cancel_property_booking_endpoint(
+    booking_id: int,
+    payload: PropertyBookingCancellationRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    return cancel_property_booking(db, booking_id=booking_id, actor=current_user, payload=payload)
+
+
+@router.get("/bookings/{booking_id}/cancellation-preview", response_model=PropertyBookingCancellationPreview)
+def property_booking_cancellation_preview(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.SUPER_ADMIN)),
+):
+    return get_booking_cancellation_preview(db, booking_id=booking_id, actor=current_user)
+
+
+@router.get("/accounting/property-booking-refunds", response_model=PropertyBookingRefundQueueResponse)
+def property_booking_refund_queue(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    include_history: bool = Query(default=False),
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.ACCOUNTING)),
+):
+    return list_property_booking_refunds(db, skip=skip, limit=limit, include_history=include_history)
+
+
+@router.get("/accounting/property-booking-refunds/{refund_id}", response_model=AccountingPropertyBookingRefundDetail)
+def property_booking_refund_detail(
+    refund_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_roles(UserRole.ACCOUNTING)),
+):
+    return get_accounting_property_booking_refund(db, refund_id)
+
+
+@router.post("/accounting/property-booking-refunds/{refund_id}/confirm", response_model=AccountingPropertyBookingRefundDetail)
+def confirm_property_booking_refund_endpoint(
+    refund_id: int,
+    payload: AccountingPropertyBookingRefundConfirmRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ACCOUNTING)),
+):
+    return confirm_property_booking_refund(db, refund_id=refund_id, actor=current_user, payload=payload)
+
+
+@router.post("/accounting/property-booking-refunds/{refund_id}/fail", response_model=AccountingPropertyBookingRefundDetail)
+def fail_property_booking_refund_endpoint(
+    refund_id: int,
+    payload: AccountingPropertyBookingRefundFailRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.ACCOUNTING)),
+):
+    return fail_property_booking_refund(db, refund_id=refund_id, actor=current_user, payload=payload)
 
 
 @router.get("/dashboard/workflow-summary", response_model=AdminDashboardWorkflowSummary)
@@ -192,7 +266,7 @@ def get_booked_listing_detail_endpoint(
         current_user=current_user,
         request_id=request_id,
     )
-    if error == "Sell land request not found":
+    if error in {"Sell land request not found", "Cancelled booking history not found"}:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=error)
     if error in {
         "Listing is not booked",

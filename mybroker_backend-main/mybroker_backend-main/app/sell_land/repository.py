@@ -465,15 +465,27 @@ def list_live_sell_land_requests(
     limit: int,
 ) -> tuple[list[SellLandRequest], int]:
     release_expired_offer_locks(db)
-    paid_booking_exists = (
+    blocking_booking_exists = (
         exists()
         .where(SellLandBooking.request_id == SellLandRequest.id)
         .where(SellLandBooking.payment_status == PaymentStatus.SUCCESS.value)
+        .where(
+            SellLandBooking.booking_status.in_(
+                (
+                    BookingStatus.BOOKED.value,
+                    BookingStatus.CONFIRMED.value,
+                    BookingStatus.IN_PROCESS.value,
+                    BookingStatus.REGISTRY_SCHEDULED.value,
+                    BookingStatus.REGISTRY_DONE.value,
+                    BookingStatus.SOLD.value,
+                )
+            )
+        )
     )
     query = (
         db.query(SellLandRequest)
         .filter(SellLandRequest.status == SellLandStatus.LIVE.value)
-        .filter(~paid_booking_exists)
+        .filter(~blocking_booking_exists)
     )
 
     cleaned_search = (search or "").strip()
@@ -594,7 +606,7 @@ def create_or_update_offer_for_buyer(db: Session, request_id: int, buyer_id: int
         .first()
     )
 
-    if existing:
+    if existing and existing.status in {OfferStatus.PENDING.value, OfferStatus.COUNTERED.value}:
         existing.offered_amount = offered_amount
         existing.status = OfferStatus.PENDING.value
         existing.counter_amount = None
@@ -1063,7 +1075,6 @@ def list_offers_for_buyer(db: Session, buyer_id: int) -> list[tuple[SellLandOffe
         .group_by(SellLandOffer.request_id)
         .subquery()
     )
-
     return (
         db.query(SellLandOffer, SellLandRequest)
         .join(SellLandRequest, SellLandRequest.id == SellLandOffer.request_id)
@@ -1071,6 +1082,41 @@ def list_offers_for_buyer(db: Session, buyer_id: int) -> list[tuple[SellLandOffe
         .order_by(SellLandOffer.updated_at.desc(), SellLandOffer.id.desc())
         .all()
     )
+
+
+def get_incoming_offer_counts(db: Session, user_id: int) -> dict[str, int]:
+    latest_offer_ids = (
+        db.query(func.max(SellLandOffer.id).label("offer_id"))
+        .group_by(SellLandOffer.request_id, SellLandOffer.buyer_id)
+        .subquery()
+    )
+    seller_pending = (
+        db.query(func.count(SellLandOffer.id))
+        .join(SellLandRequest, SellLandRequest.id == SellLandOffer.request_id)
+        .join(latest_offer_ids, SellLandOffer.id == latest_offer_ids.c.offer_id)
+        .filter(
+            SellLandRequest.user_id == user_id,
+            SellLandOffer.status == OfferStatus.PENDING.value,
+            SellLandOffer.buyer_id != user_id,
+        )
+        .scalar()
+        or 0
+    )
+    buyer_countered = (
+        db.query(func.count(SellLandOffer.id))
+        .join(latest_offer_ids, SellLandOffer.id == latest_offer_ids.c.offer_id)
+        .filter(
+            SellLandOffer.buyer_id == user_id,
+            SellLandOffer.status == OfferStatus.COUNTERED.value,
+        )
+        .scalar()
+        or 0
+    )
+    return {
+        "seller_pending": int(seller_pending),
+        "buyer_countered": int(buyer_countered),
+        "total": int(seller_pending) + int(buyer_countered),
+    }
 
 
 def get_offer_by_id_for_buyer(db: Session, offer_id: int, buyer_id: int) -> SellLandOffer | None:
@@ -1098,6 +1144,20 @@ def get_booking_for_listing_buyer(db: Session, request_id: int, buyer_id: int) -
         .filter(
             SellLandBooking.request_id == request_id,
             SellLandBooking.buyer_id == buyer_id,
+        )
+        .order_by(SellLandBooking.created_at.desc(), SellLandBooking.id.desc())
+        .first()
+    )
+
+
+def get_current_booking_for_listing_buyer(db: Session, request_id: int, buyer_id: int) -> SellLandBooking | None:
+    """Return the buyer's current booking, leaving cancelled bookings as history."""
+    return (
+        db.query(SellLandBooking)
+        .filter(
+            SellLandBooking.request_id == request_id,
+            SellLandBooking.buyer_id == buyer_id,
+            SellLandBooking.booking_status != BookingStatus.CANCELLED.value,
         )
         .order_by(SellLandBooking.created_at.desc(), SellLandBooking.id.desc())
         .first()

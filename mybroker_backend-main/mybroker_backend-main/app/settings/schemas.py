@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -38,6 +39,15 @@ class BannerDeleteResponse(BaseModel):
 class ProcessingFeeSettingsUpdateRequest(BaseModel):
     seller_processing_fee: float = Field(ge=0)
     buyer_processing_fee: float = Field(ge=0)
+    # Optional so already-installed app versions can continue updating the two
+    # existing fees without resetting the independently configured visit fee.
+    site_visit_fee: Decimal | None = Field(
+        default=None,
+        ge=Decimal("0.00"),
+        le=Decimal("100000.00"),
+        max_digits=8,
+        decimal_places=2,
+    )
 
 
 class ProcessingFeeSettingsResponse(BaseModel):
@@ -46,4 +56,5 @@ class ProcessingFeeSettingsResponse(BaseModel):
     id: int
     seller_processing_fee: float
     buyer_processing_fee: float
+    site_visit_fee: Decimal
     updated_at: datetime

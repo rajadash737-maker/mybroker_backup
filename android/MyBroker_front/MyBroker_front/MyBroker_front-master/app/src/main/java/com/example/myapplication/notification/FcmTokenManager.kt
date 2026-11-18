@@ -18,7 +18,9 @@ object FcmTokenManager {
             val session = SessionManager(context.applicationContext)
             session.saveFcmToken(cleaned)
             tryRegisterPendingToken(context.applicationContext)
-        }.addOnFailureListener { Log.w("FCM", "Unable to refresh FCM token", it) }
+        }.addOnFailureListener {
+            Log.w("FCM", "Unable to refresh FCM token (${it.javaClass.simpleName})")
+        }
     }
 
     fun onNewToken(context: Context, token: String) {
@@ -39,7 +41,9 @@ object FcmTokenManager {
                 ApiClient.apiService.registerFcmToken(FcmTokenRequest(token))
             }.onSuccess { response ->
                 if (response.isSuccessful) session.saveFcmTokenSynced(token)
-            }.onFailure { Log.w("FCM", "Unable to register FCM token", it) }
+            }.onFailure { error ->
+                Log.w("FCM", "Unable to register FCM token (${error.javaClass.simpleName})")
+            }
         }
     }
 }

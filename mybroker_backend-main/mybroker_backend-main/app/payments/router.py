@@ -95,7 +95,11 @@ async def razorpay_webhook(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid webhook payload")
     event = payload.get("event", "")
-    event_id = payload.get("event_id") or payload.get("id")
+    # Razorpay identifies a webhook delivery with this header; payload-level
+    # id fields are entity IDs and are not reliable event deduplication keys.
+    event_id = request.headers.get("x-razorpay-event-id")
+    if not event_id or len(event_id) > 80:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Missing or invalid event ID")
     payment_block = (payload.get("payload") or {}).get("payment", {})
     payment_entity = payment_block.get("entity", {}) if isinstance(payment_block, dict) else {}
     if not isinstance(payment_entity, dict):

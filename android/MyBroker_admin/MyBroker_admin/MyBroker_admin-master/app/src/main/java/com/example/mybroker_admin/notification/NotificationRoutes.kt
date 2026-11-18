@@ -1,4 +1,4 @@
-package com.example.mybroker_admin.notification
+﻿package com.example.mybroker_admin.notification
 
 import com.example.mybroker_admin.core.navigation.Routes
 
@@ -14,7 +14,25 @@ object NotificationRoutes {
     }
 
     fun routeForNotification(type: String?, referenceId: String?, role: String?): String? {
+        if (type?.startsWith("SITE_VISIT_") == true && referenceId?.toIntOrNull() != null) {
+            val id = referenceId.toInt()
+            return when (role?.lowercase()) {
+                "field_officer" -> if (type == NotificationData.TYPE_SITE_VISIT_ASSIGNMENT_REMOVED) {
+                    Routes.FIELD_SITE_VISITS
+                } else {
+                    Routes.fieldSiteVisitBookingDetail(id)
+                }
+                "accounting" -> Routes.accountingSiteVisitRefundDetail(id)
+                "super_admin" -> Routes.superAdminSiteVisitAuditDetail(id)
+                "admin" -> Routes.siteVisitAdminDetail(id)
+                else -> null
+            }
+        }
         return when (type) {
+            NotificationData.TYPE_SITE_VISIT_ASSIGNED -> Routes.FIELD_SITE_VISITS
+            NotificationData.TYPE_SITE_VISIT_ASSIGNMENT_REMOVED -> Routes.FIELD_SITE_VISITS
+            NotificationData.TYPE_SITE_VISIT_COMPLETED, NotificationData.TYPE_SITE_VISIT_COMPLETION_CODE_READY ->
+                if (role.equals("field_officer", ignoreCase = true)) Routes.FIELD_SITE_VISITS else Routes.SITE_VISITS
             NotificationData.TYPE_LAND_SUBMITTED -> Routes.PENDING_LISTINGS
             NotificationData.TYPE_CASE_ASSIGNED -> Routes.FIELD_AVAILABLE
             NotificationData.TYPE_REGISTRY_SCHEDULED -> referenceId?.let { Routes.registryDetail(it) } ?: Routes.REGISTRY_DASHBOARD
@@ -33,3 +51,4 @@ object NotificationRoutes {
         }
     }
 }
+

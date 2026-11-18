@@ -43,13 +43,19 @@ import com.example.myapplication.ui.feature.common.rememberIsConnected
 @Composable
 fun BuyerLandsScreen(
     viewModel: BuyerLandsViewModel,
+    incomingOnly: Boolean = false,
     onBookNow: (Int) -> Unit = {},
     onViewDetails: (com.example.myapplication.ui.feature.buyer.domain.model.BuyerOffer) -> Unit = {},
+    onRefundDetails: (Int) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val isConnected by rememberIsConnected()
+
+    LaunchedEffect(incomingOnly) {
+        if (incomingOnly) viewModel.onFilterChange(BuyerOfferFilter.COUNTER_RECEIVED)
+    }
 
     var showCounterDialog by remember { mutableStateOf(false) }
     var counterRequestId by remember { mutableIntStateOf(-1) }
@@ -179,7 +185,8 @@ fun BuyerLandsScreen(
                             showCounterDialog = true
                         },
                         onBookNow = onBookNow,
-                        onViewDetails = onViewDetails
+                        onViewDetails = onViewDetails,
+                        onRefundDetails = onRefundDetails
                     )
                 }
             }

@@ -15,6 +15,7 @@ import app.payments.models  # noqa: F401
 import app.notifications.models  # noqa: F401
 import app.ratings.models  # noqa: F401
 import app.settings.models  # noqa: F401
+import app.site_visits.models  # noqa: F401
 
 config = context.config
 

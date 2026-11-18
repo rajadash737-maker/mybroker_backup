@@ -51,8 +51,20 @@
 **/.coverage
 **/coverage.xml
 
+# Local test runs and temporary pytest work areas
+/pytest-tmp/
+**/pytest-tmp/
+**/pytest-work/
+**/.pytest-tmp*/
+**/pytest-temp-*/
+**/pytest-*/
+**/.pytest-*/
+**/.test-tmp-*/
+**/sitevisit-pytest-*/
+
 # Database files, SQL dumps, and local backups
 /backups/
+/database_backups/
 **/*.sql
 **/*.dump
 **/*.sqlite
@@ -61,6 +73,10 @@
 
 # Uploaded/private user content
 **/app/uploads/
+**/app/private_uploads/
+
+# Local secrets and untracked credential material
+/secrets/
 
 # Logs and temporary files
 **/*.log

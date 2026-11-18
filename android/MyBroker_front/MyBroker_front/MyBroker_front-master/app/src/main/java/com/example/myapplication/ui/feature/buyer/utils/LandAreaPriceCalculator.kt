@@ -28,14 +28,8 @@ object LandAreaPriceCalculator {
         expectedPrice: Double?,
         priceType: String?
     ): LandAreaPriceBreakdown {
-        val inputArea = area?.takeIf { it.isFinite() && it > 0.0 }
         val inputPrice = expectedPrice?.takeIf { it.isFinite() && it > 0.0 }
-        val sourceUnit = units.firstOrNull { it.key == areaUnit?.trim()?.lowercase() }
-        val totalSquareFeet = if (inputArea != null && sourceUnit != null) {
-            (inputArea * sourceUnit.squareFeet).takeIf { it.isFinite() && it > 0.0 }
-        } else {
-            null
-        }
+        val totalSquareFeet = toSquareFeet(area, areaUnit)
 
         val normalizedPriceType = priceType?.trim()?.lowercase()
         val totalAmount = when {
@@ -64,5 +58,33 @@ object LandAreaPriceCalculator {
         }
 
         return LandAreaPriceBreakdown(totalAmount, rows)
+    }
+
+    /** Calculates unit prices from the accepted booking/offer amount, not the listing asking price. */
+    fun calculateForAgreedDeal(
+        area: Double?,
+        areaUnit: String?,
+        agreedDealAmount: Double?
+    ): LandAreaPriceBreakdown {
+        val amount = agreedDealAmount?.takeIf { it.isFinite() && it > 0.0 }
+        val totalSquareFeet = toSquareFeet(area, areaUnit)
+        val rows = units.map { unit ->
+            val convertedArea = totalSquareFeet
+                ?.div(unit.squareFeet)
+                ?.takeIf { it.isFinite() && it > 0.0 }
+            val perUnitPrice = if (amount != null && convertedArea != null) {
+                (amount / convertedArea).takeIf { it.isFinite() && it > 0.0 }
+            } else {
+                null
+            }
+            LandAreaPriceRow(unit.label, convertedArea, perUnitPrice)
+        }
+        return LandAreaPriceBreakdown(amount, rows)
+    }
+
+    private fun toSquareFeet(area: Double?, areaUnit: String?): Double? {
+        val inputArea = area?.takeIf { it.isFinite() && it > 0.0 } ?: return null
+        val sourceUnit = units.firstOrNull { it.key == areaUnit?.trim()?.lowercase() } ?: return null
+        return (inputArea * sourceUnit.squareFeet).takeIf { it.isFinite() && it > 0.0 }
     }
 }

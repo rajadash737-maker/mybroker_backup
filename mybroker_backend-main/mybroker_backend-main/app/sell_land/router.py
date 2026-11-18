@@ -1,5 +1,6 @@
 import logging
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
+from app.core.dependencies import require_roles
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,9 @@ from app.sell_land.schemas import (
     BuyerOfferCreateRequest,
     BuyerOfferCreateResponse,
     BuyerOfferListResponse,
+    BuyerPropertyBookingRefundResponse,
+    BuyerPropertyBookingRefundUpiRequest,
+    IncomingOfferCountResponse,
     BuyerBookingCreateRequest,
     BuyerBookingCreateResponse,
     BuyerBookingPreviewResponse,
@@ -64,6 +68,7 @@ from app.sell_land.service import (
     like_explore_land,
     list_explore_lands,
     list_my_buyer_offers,
+    get_my_incoming_offer_count,
     list_my_media,
     list_my_request_tracking,
     list_my_requests,
@@ -82,10 +87,16 @@ from app.sell_land.service import (
     upsert_my_draft,
     unlike_explore_land,
 )
+from app.sell_land.property_booking_refunds import (
+    get_buyer_booking_refund,
+    submit_buyer_refund_upi,
+)
 from app.users.model import User
+from app.users.roles import UserRole
 
 router = APIRouter(prefix="/sell-land", tags=["Sell Land"])
 logger = logging.getLogger(__name__)
+customer_dependency = require_roles(UserRole.CUSTOMER)
 
 
 @router.get("/document-requirements", response_model=list[SellLandDocumentRequirementsResponse])
@@ -197,6 +208,33 @@ def get_my_buyer_offers(
     current_user: User = Depends(get_current_user),
 ):
     return list_my_buyer_offers(db=db, user_id=current_user.id)
+
+
+@router.get("/buyer/bookings/{booking_id}/refund", response_model=BuyerPropertyBookingRefundResponse)
+def buyer_property_booking_refund(
+    booking_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(customer_dependency),
+):
+    return get_buyer_booking_refund(db, booking_id=booking_id, buyer=current_user)
+
+
+@router.post("/buyer/bookings/{booking_id}/refund/upi", response_model=BuyerPropertyBookingRefundResponse)
+def submit_buyer_property_booking_refund_upi(
+    booking_id: int,
+    payload: BuyerPropertyBookingRefundUpiRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(customer_dependency),
+):
+    return submit_buyer_refund_upi(db, booking_id=booking_id, buyer=current_user, payload=payload)
+
+
+@router.get("/offers/incoming-count", response_model=IncomingOfferCountResponse)
+def get_incoming_offer_count(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(customer_dependency),
+):
+    return get_my_incoming_offer_count(db=db, user_id=current_user.id)
 
 
 @router.get("/buyer/bookings/preview", response_model=BuyerBookingPreviewResponse)

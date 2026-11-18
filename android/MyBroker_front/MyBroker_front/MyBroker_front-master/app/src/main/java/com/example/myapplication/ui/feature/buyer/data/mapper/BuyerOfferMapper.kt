@@ -51,7 +51,15 @@ fun BuyerOfferItemDto.toDomain(): BuyerOffer {
         ),
         registryDate = registryDate,
         registryTime = registryTime,
-        registryLocation = registryLocation
+        registryLocation = registryLocation,
+        bookingId = bookingId,
+        cancellationReason = cancellationReason,
+        refundDecision = refundDecision,
+        refundStatus = refundStatus,
+        approvedRefundAmount = approvedRefundAmount,
+        actualRefundedAmount = actualRefundedAmount,
+        refundTransactionReference = refundTransactionReference,
+        refundConfirmedAt = refundConfirmedAt
     )
 }
 

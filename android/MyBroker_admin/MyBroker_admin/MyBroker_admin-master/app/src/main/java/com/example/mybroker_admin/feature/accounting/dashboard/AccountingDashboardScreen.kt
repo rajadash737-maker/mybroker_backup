@@ -195,6 +195,20 @@ fun AccountingDashboardScreen(
                 }
             )
             StatCard(
+                title = "Site Visit Refunds",
+                value = "Open Site Visit ledger",
+                modifier = Modifier.clickable {
+                    navController.navigate(Routes.ACCOUNTING_SITE_VISIT_REFUNDS)
+                }
+            )
+            StatCard(
+                title = "Property Booking Refunds",
+                value = "Open property booking ledger",
+                modifier = Modifier.clickable {
+                    navController.navigate(Routes.ACCOUNTING_PROPERTY_BOOKING_REFUNDS)
+                }
+            )
+            StatCard(
                 title = "Webhook Logs",
                 value = state.webhookLogCount.toString(),
                 modifier = Modifier.clickable {

@@ -13,6 +13,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.HomeWork
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.LocalOffer
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -31,15 +32,19 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import com.example.myapplication.R
 import com.example.myapplication.network.ApiClient
+import com.example.myapplication.ui.feature.home_pase.formatOfferBadgeCount
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeTopBar(
     onNotificationClick: () -> Unit,
+    onOffersClick: () -> Unit,
     onLikeClick: () -> Unit,      // NEW
     onLandClick: () -> Unit,
     onProfileClick: () -> Unit,
-    unreadCount: Int = 0
+    unreadCount: Int = 0,
+    offerCount: Int? = null,
+    offerCountUnavailable: Boolean = false
 ) {
     val context = LocalContext.current
     val api = remember(context) {
@@ -107,6 +112,26 @@ fun HomeTopBar(
                     }
                 ) {
                     Icon(Icons.Default.Notifications, contentDescription = "Notifications", tint = Color.White)
+                }
+            }
+
+            IconButton(onClick = onOffersClick) {
+                BadgedBox(
+                    badge = {
+                        val badgeText = offerCount?.let(::formatOfferBadgeCount)
+                        if (badgeText != null) {
+                            Badge(
+                                containerColor = Color(0xFFD32F2F),
+                                contentColor = Color.White
+                            ) { Text(badgeText, maxLines = 1) }
+                        }
+                    }
+                ) {
+                    Icon(
+                        Icons.Default.LocalOffer,
+                        contentDescription = if (offerCountUnavailable) "Offers count unavailable" else "Offers",
+                        tint = Color.White
+                    )
                 }
             }
 

@@ -1,8 +1,6 @@
 package com.example.myapplication.notification
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -79,15 +77,8 @@ class MyFirebaseService : FirebaseMessagingService() {
             PackageManager.PERMISSION_GRANTED
         ) return
 
-        val channelId = "user_notifications"
-        val manager = getSystemService(NotificationManager::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            manager.getNotificationChannel(channelId) == null
-        ) {
-            manager.createNotificationChannel(
-                NotificationChannel(channelId, getString(R.string.app_name), NotificationManager.IMPORTANCE_DEFAULT)
-            )
-        }
+        val channelId = NotificationChannels.USER_NOTIFICATIONS
+        NotificationChannels.create(this)
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP

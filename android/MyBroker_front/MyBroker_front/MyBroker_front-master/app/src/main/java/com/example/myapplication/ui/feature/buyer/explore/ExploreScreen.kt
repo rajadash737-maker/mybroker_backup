@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -27,33 +28,132 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
+import com.example.myapplication.network.ApiClient
+import com.example.myapplication.ui.feature.buyer.profile.missingBuyerOfferProfileFields
 import com.example.myapplication.R
 import com.example.myapplication.ui.feature.buyer.explore.components.FilterBottomSheet
 import com.example.myapplication.ui.feature.buyer.explore.components.LandCard
 import com.example.myapplication.ui.feature.common.PullToRefreshBox
+import kotlinx.coroutines.launch
 
 @Composable
 fun ExploreScreen(
     viewModel: ExploreViewModel,
     onLandClick: (Int) -> Unit = {},
+    onSiteVisitClick: (Land) -> Unit = {},
+    onCompleteProfileForSiteVisit: (Land) -> Unit = {},
     onMapClick: (Int) -> Unit = {},
     isWishlistScreen: Boolean = false
 ) {
     val state by viewModel.uiState.collectAsState()
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     var showSortMenu by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var selectedSiteVisitLand by remember { mutableStateOf<Land?>(null) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var profileCheckFailed by remember { mutableStateOf(false) }
+    var checkingProfile by remember { mutableStateOf(false) }
+
+    fun checkSiteVisitProfile(land: Land) {
+        if (checkingProfile) return
+        selectedSiteVisitLand = land
+        profileCheckFailed = false
+        checkingProfile = true
+        scope.launch {
+            val verification = runCatching {
+                ApiClient.init(context.applicationContext)
+                ApiClient.apiService.getMyProfile()
+            }
+            checkingProfile = false
+            verification.onSuccess { response ->
+                val profile = response.body().takeIf { response.isSuccessful }
+                if (profile == null) {
+                    profileCheckFailed = true
+                    showProfileDialog = true
+                } else if (missingBuyerOfferProfileFields(profile).isEmpty()) {
+                    selectedSiteVisitLand = null
+                    onSiteVisitClick(land)
+                } else {
+                    showProfileDialog = true
+                }
+            }.onFailure {
+                profileCheckFailed = true
+                showProfileDialog = true
+            }
+        }
+    }
+
+    if (checkingProfile) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Checking Profile") },
+            text = {
+                androidx.compose.foundation.layout.Row(
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.height(28.dp))
+                    Text("Verifying your buyer profile before opening the booking form.")
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
+    val pendingSiteVisitLand = selectedSiteVisitLand
+    if (showProfileDialog && pendingSiteVisitLand != null) {
+        AlertDialog(
+            onDismissRequest = {
+                showProfileDialog = false
+                selectedSiteVisitLand = null
+            },
+            title = { Text(if (profileCheckFailed) "Profile Check Unavailable" else "Complete Your Profile") },
+            text = {
+                Text(
+                    if (profileCheckFailed) {
+                        "We couldn't verify your profile. Please try again before booking a Site Visit."
+                    } else {
+                        "Please complete your profile before booking a Site Visit. This helps us verify your details and process your booking."
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (profileCheckFailed) {
+                        showProfileDialog = false
+                        checkSiteVisitProfile(pendingSiteVisitLand)
+                    } else {
+                        showProfileDialog = false
+                        onCompleteProfileForSiteVisit(pendingSiteVisitLand)
+                    }
+                }) {
+                    Text(if (profileCheckFailed) "Retry" else "Complete Profile")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showProfileDialog = false
+                    selectedSiteVisitLand = null
+                }) { Text("Maybe Later") }
+            }
+        )
+    }
     Scaffold(
         topBar = {
             Column(
@@ -149,6 +249,7 @@ fun ExploreScreen(
                             LandCard(
                                 land = land,
                                 onClick = { onLandClick(land.id) },
+                                onSiteVisitClick = { checkSiteVisitProfile(land) },
                                 onWishlistClick = {
                                     viewModel.onEvent(ExploreEvent.OnWishlistClick(land.id))
                                 },

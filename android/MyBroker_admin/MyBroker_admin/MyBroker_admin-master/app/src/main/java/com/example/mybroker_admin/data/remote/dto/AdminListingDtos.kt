@@ -1,6 +1,11 @@
 package com.example.mybroker_admin.data.remote.dto
 
+import com.google.gson.Gson
+import com.google.gson.annotations.JsonAdapter
 import com.google.gson.JsonElement
+import com.google.gson.TypeAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
 
 data class AdminListingListResponseDto(
     val total: Int,
@@ -57,7 +62,23 @@ data class AdminListingDetailDto(
     val media: List<AdminMediaDto>
 )
 
-data class AdminInstagramUrlUpdateRequestDto(val instagram_url: JsonElement)
+data class AdminInstagramUrlUpdateRequestDto(@field:JsonAdapter(ExplicitNullJsonElementAdapter::class) val instagram_url: JsonElement)
+
+private class ExplicitNullJsonElementAdapter : TypeAdapter<JsonElement>() {
+    private val delegate = Gson().getAdapter(JsonElement::class.java)
+
+    override fun write(out: JsonWriter, value: JsonElement?) {
+        val previousSerializeNulls = out.serializeNulls
+        out.serializeNulls = true
+        try {
+            delegate.write(out, value)
+        } finally {
+            out.serializeNulls = previousSerializeNulls
+        }
+    }
+
+    override fun read(input: JsonReader): JsonElement? = delegate.read(input)
+}
 
 data class AdminInstagramUrlUpdateResponseDto(
     val request_id: Int,
@@ -239,7 +260,31 @@ data class AdminBookedListingDetailDto(
     val land: AdminBookedLandInfoDto,
     val payment: AdminBookedPaymentInfoDto,
     val field_officer: AdminCaseLockOfficerSummaryDto?,
-    val registry: AdminRegistryInfoDto?
+    val registry: AdminRegistryInfoDto?,
+    val cancellation_reason: String? = null,
+    val refund_decision: String? = null,
+    val refund_status: String? = null,
+    val approved_refund_amount: Double? = null,
+    val actual_refunded_amount: Double? = null,
+    val refund_reference: String? = null,
+    val cancelled_at: String? = null
+)
+
+data class PropertyBookingCancellationPreviewDto(
+    val booking_id: Int, val listing_id: Int, val listing_code: String?, val property_name: String?,
+    val buyer_name: String, val buyer_mobile: String, val booking_status: String, val listing_status: String,
+    val captured_payment_amount: Double?, val captured_at: String?, val can_cancel: Boolean,
+    val blocking_reason: String?
+)
+
+data class PropertyBookingCancellationRequestDto(
+    val refund_decision: String, val refund_amount: Double, val cancellation_reason: String
+)
+
+data class PropertyBookingCancellationResponseDto(
+    val booking_id: Int, val listing_id: Int, val refund_id: Int, val booking_status: String,
+    val listing_status: String, val refund_decision: String, val refund_status: String,
+    val original_captured_amount: Double, val approved_refund_amount: Double
 )
 
 data class AdminRegistryProofDto(

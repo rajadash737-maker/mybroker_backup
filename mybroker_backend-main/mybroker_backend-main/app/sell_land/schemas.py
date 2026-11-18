@@ -723,6 +723,7 @@ class BuyerOfferBookingStatus(str, Enum):
     REGISTRY_SCHEDULED = "registry_scheduled"
     REGISTRY_DONE = "registry_done"
     SOLD = "sold"
+    CANCELLED = "cancelled"
     EXPIRED = "expired"
 
 
@@ -763,6 +764,14 @@ class BuyerOfferItem(BaseModel):
     registry_time: time | None = None
     registry_location: str | None = None
     land: BuyerOfferLandSummary
+    booking_id: int | None = None
+    cancellation_reason: str | None = None
+    refund_decision: str | None = None
+    refund_status: str | None = None
+    approved_refund_amount: Decimal | None = None
+    actual_refunded_amount: Decimal | None = None
+    refund_transaction_reference: str | None = None
+    refund_confirmed_at: datetime | None = None
 
 
 class RegistryProofItem(BaseModel):
@@ -782,6 +791,39 @@ class RegistryProofItem(BaseModel):
 class BuyerOfferListResponse(BaseModel):
     total: int
     items: list[BuyerOfferItem]
+
+
+class BuyerPropertyBookingRefundResponse(BaseModel):
+    booking_id: int
+    listing_id: int
+    booking_status: str
+    refund_decision: str
+    refund_status: str
+    cancellation_reason: str
+    approved_refund_amount: Decimal
+    actual_refunded_amount: Decimal | None = None
+    transaction_reference: str | None = None
+    accounting_confirmed_at: datetime | None = None
+
+
+class BuyerPropertyBookingRefundUpiRequest(BaseModel):
+    upi_id: str = Field(min_length=4, max_length=120)
+
+    @field_validator("upi_id")
+    @classmethod
+    def validate_upi_id(cls, value: str) -> str:
+        import re
+
+        cleaned = value.strip()
+        if re.fullmatch(r"[A-Za-z0-9._-]{2,80}@[A-Za-z0-9.-]{2,40}", cleaned) is None:
+            raise ValueError("Enter a valid UPI ID")
+        return cleaned
+
+
+class IncomingOfferCountResponse(BaseModel):
+    seller_pending: int
+    buyer_countered: int
+    total: int
 
 
 class BuyerOfferActionResponse(BaseModel):

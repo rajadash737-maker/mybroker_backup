@@ -22,7 +22,15 @@ data class BuyerOffer(
     val land: BuyerOfferLand,
     val registryDate: String? = null,
     val registryTime: String? = null,
-    val registryLocation: String? = null
+    val registryLocation: String? = null,
+    val bookingId: Int? = null,
+    val cancellationReason: String? = null,
+    val refundDecision: String? = null,
+    val refundStatus: String? = null,
+    val approvedRefundAmount: Double? = null,
+    val actualRefundedAmount: Double? = null,
+    val refundTransactionReference: String? = null,
+    val refundConfirmedAt: String? = null
 )
 
 data class BuyerOfferTimelineEvent(

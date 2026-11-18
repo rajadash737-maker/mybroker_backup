@@ -47,7 +47,7 @@ fun ProcessingFeesScreen(
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
         )
         Text(
-            text = "Set the processing fee for seller listing and buyer booking payments.",
+            text = "Set the seller listing, buyer booking, and site visit fees.",
             style = MaterialTheme.typography.bodySmall,
             color = Color.Gray
         )
@@ -69,6 +69,14 @@ fun ProcessingFeesScreen(
             value = state.data.buyerFee,
             onValueChange = viewModel::onBuyerFeeChange,
             label = { Text("Buyer Processing Fee (₹)") },
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true
+        )
+
+        OutlinedTextField(
+            value = state.data.siteVisitFee,
+            onValueChange = viewModel::onSiteVisitFeeChange,
+            label = { Text("Site Visit Fee (₹)") },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true
         )

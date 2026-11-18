@@ -65,4 +65,48 @@ class LandAreaPriceCalculatorTest {
         assertNull(invalidPrice.totalLandAmount)
         assertNull(invalidPrice.rows.first().perUnitPrice)
     }
+
+    @Test
+    fun agreedDealAmountIsDividedByConvertedAreaInEveryUnit() {
+        val result = LandAreaPriceCalculator.calculateForAgreedDeal(1.0, "acre", 500_000.0)
+
+        assertEquals(500_000.0, result.totalLandAmount!!, 0.001)
+        assertEquals(43_560.0, result.rows[0].convertedArea!!, 0.001)
+        assertEquals(500_000.0 / 43_560.0, result.rows[0].perUnitPrice!!, 0.000001)
+        assertEquals(500_000.0, result.rows[3].perUnitPrice!!, 0.001)
+    }
+
+    @Test
+    fun agreedDealSupportsDecimalAndHectareSourceUnits() {
+        val decimal = LandAreaPriceCalculator.calculateForAgreedDeal(100.0, "decimal", 500_000.0)
+        assertEquals(100.0, decimal.rows[2].convertedArea!!, 0.001)
+        assertEquals(5_000.0, decimal.rows[2].perUnitPrice!!, 0.001)
+
+        val hectare = LandAreaPriceCalculator.calculateForAgreedDeal(1.0, "hectare", 500_000.0)
+        assertEquals(1.0, hectare.rows[4].convertedArea!!, 0.000001)
+        assertEquals(500_000.0, hectare.rows[4].perUnitPrice!!, 0.001)
+    }
+
+    @Test
+    fun agreedDealDoesNotCalculateForMissingInvalidAreaOrLegacyBigha() {
+        val missingDeal = LandAreaPriceCalculator.calculateForAgreedDeal(1.0, "acre", null)
+        assertNull(missingDeal.totalLandAmount)
+        assertNull(missingDeal.rows.first().perUnitPrice)
+
+        val invalidDeal = LandAreaPriceCalculator.calculateForAgreedDeal(1.0, "acre", -10.0)
+        assertNull(invalidDeal.totalLandAmount)
+        assertNull(invalidDeal.rows.first().perUnitPrice)
+
+        val zeroArea = LandAreaPriceCalculator.calculateForAgreedDeal(0.0, "sqft", 500_000.0)
+        assertEquals(500_000.0, zeroArea.totalLandAmount!!, 0.001)
+        assertNull(zeroArea.rows.first().convertedArea)
+        assertNull(zeroArea.rows.first().perUnitPrice)
+
+        val bigha = LandAreaPriceCalculator.calculateForAgreedDeal(2.0, "bigha", 500_000.0)
+        assertEquals(500_000.0, bigha.totalLandAmount!!, 0.001)
+        bigha.rows.forEach {
+            assertNull(it.convertedArea)
+            assertNull(it.perUnitPrice)
+        }
+    }
 }

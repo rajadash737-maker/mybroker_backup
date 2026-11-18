@@ -1,5 +1,29 @@
 package com.example.mybroker_admin.data.remote.dto
 
+data class PropertyBookingRefundQueueDto(val total: Int, val skip: Int, val limit: Int, val items: List<PropertyBookingRefundItemDto>)
+data class PropertyBookingRefundItemDto(
+    val refund_id: Int, val booking_id: Int, val listing_id: Int, val listing_code: String?, val property_name: String?,
+    val buyer_name: String, val buyer_mobile: String, val original_captured_amount: Double,
+    val approved_refund_amount: Double, val cancellation_reason: String, val refund_status: String, val cancelled_at: String,
+    val buyer_upi_id: String? = null
+)
+data class PropertyBookingRefundHistoryDto(
+    val event_type: String, val from_status: String?, val to_status: String, val actor_role: String,
+    val note: String?, val created_at: String
+)
+data class PropertyBookingRefundDetailDto(
+    val refund_id: Int, val booking_id: Int, val listing_id: Int, val listing_code: String?, val property_name: String?,
+    val buyer_name: String, val buyer_mobile: String, val original_captured_amount: Double,
+    val approved_refund_amount: Double, val cancellation_reason: String, val refund_status: String, val cancelled_at: String,
+    val buyer_id: Int, val buyer_upi_id: String?, val transaction_reference: String?, val actual_refunded_amount: Double?,
+    val confirmation_note: String?, val accounting_confirmed_at: String?, val payment_order_id: Int,
+    val history: List<PropertyBookingRefundHistoryDto>
+)
+data class PropertyBookingRefundConfirmRequestDto(
+    val actual_refunded_amount: Double, val transaction_reference: String, val confirmation_note: String? = null
+)
+data class PropertyBookingRefundFailRequestDto(val reason: String)
+
 data class AccountingRefundPendingItemDto(
     val request_id: Int,
     val listing_code: String?,

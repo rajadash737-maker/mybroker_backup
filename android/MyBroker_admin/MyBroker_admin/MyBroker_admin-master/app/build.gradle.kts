@@ -1,4 +1,4 @@
-import java.util.Properties
+﻿import java.util.Properties
 
 plugins {
     alias(libs.plugins.android.application)
@@ -17,7 +17,7 @@ val keystoreProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 
-val localBaseUrl = localProps.getProperty("BASE_URL") ?: "http://10.44.238.22:8000/"
+val localBaseUrl = localProps.getProperty("BASE_URL") ?: "http://10.0.2.2:8000/"
 val releaseBaseUrl = "https://api.mybroker.com/"
 val hasReleaseSigning = keystoreProps.getProperty("storeFile")?.isNotBlank() == true &&
     keystoreProps.getProperty("storePassword")?.isNotBlank() == true &&
@@ -129,7 +129,7 @@ dependencies {
     // Firebase BOM
     implementation(platform("com.google.firebase:firebase-bom:34.12.0"))
 
-    // Firebase Messaging (Notification ke liye 🔔)
+    // Firebase Messaging (Notification ke liye ðŸ””)
     implementation("com.google.firebase:firebase-messaging")
 
     testImplementation(libs.junit)
@@ -140,3 +140,4 @@ dependencies {
 kapt {
     correctErrorTypes = true
 }
+

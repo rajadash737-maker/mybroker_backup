@@ -14,6 +14,8 @@ import com.example.myapplication.ui.feature.buyer.data.remote.dto.MakeOfferReque
 import com.example.myapplication.ui.feature.buyer.data.remote.dto.MakeOfferResponseDto
 import com.example.myapplication.ui.feature.buyer.data.remote.dto.VerifyPaymentRequestDto
 import com.example.myapplication.ui.feature.buyer.data.remote.dto.VerifyPaymentResponseDto
+import com.example.myapplication.ui.feature.buyer.data.remote.dto.BuyerPropertyBookingRefundDto
+import com.example.myapplication.ui.feature.buyer.data.remote.dto.BuyerRefundUpiRequestDto
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.http.Body
@@ -26,6 +28,13 @@ import retrofit2.http.Path
 import retrofit2.http.Query
 
 interface LandApi {
+
+    @GET("sell-land/buyer/bookings/{booking_id}/refund")
+    suspend fun getBookingRefund(@Path("booking_id") bookingId: Int): BuyerPropertyBookingRefundDto
+
+    @POST("sell-land/buyer/bookings/{booking_id}/refund/upi")
+    suspend fun submitBookingRefundUpi(@Path("booking_id") bookingId: Int, @Body body: BuyerRefundUpiRequestDto): BuyerPropertyBookingRefundDto
+
 
     @GET("sell-land/explore")
     suspend fun exploreLands(

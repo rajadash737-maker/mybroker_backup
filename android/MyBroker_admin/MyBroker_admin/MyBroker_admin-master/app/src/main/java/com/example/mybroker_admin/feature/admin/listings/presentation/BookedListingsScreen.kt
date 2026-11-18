@@ -38,13 +38,14 @@ import com.example.mybroker_admin.feature.admin.listings.BookedListingsViewModel
 @Composable
 fun BookedListingsRoute(
     onListingClick: (Int) -> Unit = {},
-    onBack: () -> Unit = {}
+    onBack: () -> Unit = {},
+    refreshKey: Long = 0L
 ) {
     val vm: BookedListingsViewModel = viewModel()
     val state = vm.state.collectAsState().value
 
-    LaunchedEffect(Unit) {
-        if (!state.loaded) vm.load()
+    LaunchedEffect(refreshKey) {
+        if (refreshKey != 0L || !state.loaded) vm.load()
     }
 
     BookedListingsScreen(

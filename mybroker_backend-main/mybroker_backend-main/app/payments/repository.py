@@ -13,6 +13,9 @@ def create_payment_order(
     amount_paise: int,
     currency: str,
     order_id: str,
+    payment_context: str = "buyer",
+    site_visit_request_id: int | None = None,
+    commit: bool = True,
 ) -> RazorpayPaymentOrder:
     entity = RazorpayPaymentOrder(
         user_id=user_id,
@@ -20,12 +23,17 @@ def create_payment_order(
         amount=amount_inr,
         amount_paise=amount_paise,
         currency=currency,
+        payment_context=payment_context,
+        site_visit_request_id=site_visit_request_id,
         order_id=order_id,
         status="CREATED",
     )
     db.add(entity)
-    db.commit()
-    db.refresh(entity)
+    if commit:
+        db.commit()
+        db.refresh(entity)
+    else:
+        db.flush()
     return entity
 
 
@@ -90,9 +98,12 @@ def create_webhook_log(
     status: str,
     payment_context: str = "unknown",
     error: str | None = None,
+    event_key: str | None = None,
+    commit: bool = True,
 ) -> RazorpayWebhookLog:
     entity = RazorpayWebhookLog(
         event_id=event_id,
+        event_key=event_id if event_key is None else event_key,
         event=event,
         order_id=order_id,
         payment_id=payment_id,
@@ -104,13 +115,21 @@ def create_webhook_log(
         attempt_count=1,
     )
     db.add(entity)
-    db.commit()
-    db.refresh(entity)
+    if commit:
+        db.commit()
+        db.refresh(entity)
+    else:
+        db.flush()
     return entity
 
 
-def get_webhook_log_by_event_id(db: Session, event_id: str) -> RazorpayWebhookLog | None:
-    return db.query(RazorpayWebhookLog).filter(RazorpayWebhookLog.event_id == event_id).first()
+def get_webhook_log_by_event_id(
+    db: Session, event_id: str, *, for_update: bool = False
+) -> RazorpayWebhookLog | None:
+    query = db.query(RazorpayWebhookLog).filter(RazorpayWebhookLog.event_key == event_id)
+    if for_update:
+        query = query.with_for_update()
+    return query.first()
 
 
 def update_webhook_log_attempt(
@@ -124,6 +143,7 @@ def update_webhook_log_attempt(
     order_id: str | None = None,
     payment_id: str | None = None,
     signature: str | None = None,
+    commit: bool = True,
 ) -> RazorpayWebhookLog:
     log.attempt_count = (log.attempt_count or 0) + 1
     log.status = status
@@ -138,8 +158,11 @@ def update_webhook_log_attempt(
         log.payment_id = payment_id
     if signature is not None:
         log.signature = signature
-    db.commit()
-    db.refresh(log)
+    if commit:
+        db.commit()
+        db.refresh(log)
+    else:
+        db.flush()
     return log
 
 

@@ -3,6 +3,7 @@ package com.example.myapplication.ui.feature.buyer.visit_request
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.myapplication.ui.feature.buyer.domain.repository.LandRepository
+import com.example.myapplication.ui.feature.home_pase.IncomingOfferCountStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,6 +63,7 @@ class BuyerLandsViewModel(
             runCatching {
                 landRepository.acceptCounterOffer(offerId)
             }.onSuccess { result ->
+                IncomingOfferCountStore.refresh()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -87,6 +89,7 @@ class BuyerLandsViewModel(
             runCatching {
                 landRepository.rejectCounterOffer(offerId)
             }.onSuccess { result ->
+                IncomingOfferCountStore.refresh()
                 _uiState.update {
                     it.copy(
                         isLoading = false,
@@ -118,6 +121,7 @@ class BuyerLandsViewModel(
             runCatching {
                 landRepository.makeOffer(requestId = requestId, amount = amount)
             }.onSuccess { result ->
+                IncomingOfferCountStore.refresh()
                 _uiState.update {
                     it.copy(
                         isLoading = false,

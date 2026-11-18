@@ -12,10 +12,20 @@ import com.example.mybroker_admin.data.remote.dto.AdminRegistryScheduleRequestDt
 import com.example.mybroker_admin.data.remote.dto.AdminRegistryVerificationRequestDto
 import com.example.mybroker_admin.data.remote.dto.ReviewActionRequestDto
 import com.example.mybroker_admin.data.remote.dto.WebhookLogListResponseDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationPreviewDto
+import com.example.mybroker_admin.data.remote.dto.PropertyBookingCancellationRequestDto
+import retrofit2.Response
 
 class AdminListingRepository(
     private val api: AdminListingApi
 ) {
+    suspend fun getBookingCancellationPreview(
+        bookingId: Int
+    ): Response<PropertyBookingCancellationPreviewDto> = api.getBookingCancellationPreview(bookingId)
+
+    suspend fun cancelPropertyBooking(bookingId: Int, decision: String, amount: Double, reason: String) =
+        api.cancelPropertyBooking(bookingId, PropertyBookingCancellationRequestDto(decision, amount, reason))
+
     suspend fun pendingListings(
         state: String? = null,
         district: String? = null

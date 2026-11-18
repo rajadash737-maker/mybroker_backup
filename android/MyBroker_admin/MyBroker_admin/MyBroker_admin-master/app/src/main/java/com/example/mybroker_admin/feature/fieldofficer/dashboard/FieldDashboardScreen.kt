@@ -1,4 +1,4 @@
-package com.example.mybroker_admin.feature.fieldofficer.dashboard
+﻿package com.example.mybroker_admin.feature.fieldofficer.dashboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -120,6 +120,10 @@ fun FieldDashboardScreen(
                 }
             }
 
+            Button(onClick = { navController.navigate(Routes.FIELD_SITE_VISITS) }, modifier = Modifier.fillMaxWidth()) {
+                Text("My Assigned Site Visits")
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
             state.activeCase?.let {
@@ -165,3 +169,5 @@ fun FieldDashboardScreen(
         }
     }
 }
+
+

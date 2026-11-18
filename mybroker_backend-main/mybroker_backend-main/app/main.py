@@ -1,7 +1,3 @@
-from dotenv import load_dotenv
-
-load_dotenv()
-
 import logging
 import os
 from pathlib import Path
@@ -25,6 +21,7 @@ from app.transactions.router import router as transactions_router
 from app.payments.router import router as payments_router
 from app.api.property import router as property_router
 from app.notifications.router import router as notifications_router
+from app.site_visits.router import router as site_visits_router
 from app.media.router import router as media_router
 from app.core.dependencies import get_db
 from app.sell_land.models import SellLandBooking, SellLandMedia, SellLandRegistryProof, SellLandRequest
@@ -35,6 +32,7 @@ import app.ratings.models  # VERY IMPORTANT
 import app.settings.models  # VERY IMPORTANT
 import app.payments.models  # VERY IMPORTANT
 import app.notifications.models  # VERY IMPORTANT
+import app.site_visits.models  # VERY IMPORTANT
 
 logging.basicConfig(
     level=logging.INFO,
@@ -47,6 +45,16 @@ from contextlib import asynccontextmanager
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Server is starting up...")
+    from app.site_visits.completion_code import completion_code_configuration_issues
+
+    config_issues = completion_code_configuration_issues()
+    if config_issues:
+        logger.error(
+            "Site Visit completion-code configuration is invalid; set or correct environment variable names: %s",
+            ", ".join(config_issues),
+        )
+    else:
+        logger.info("Site Visit completion-code configuration validated")
     yield
     logger.info("Server is shutting down...")
 
@@ -151,4 +159,5 @@ app.include_router(transactions_router)
 app.include_router(payments_router)
 app.include_router(property_router)
 app.include_router(notifications_router)
+app.include_router(site_visits_router)
 app.include_router(media_router)

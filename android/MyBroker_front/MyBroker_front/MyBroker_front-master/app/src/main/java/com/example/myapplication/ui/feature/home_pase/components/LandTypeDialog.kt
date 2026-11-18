@@ -16,7 +16,8 @@ import com.example.myapplication.R
 fun LandTypeDialog(
     onDismiss: () -> Unit,
     onSeller: () -> Unit,
-    onBuyer: () -> Unit
+    onBuyer: () -> Unit,
+    onSiteVisitStatus: (() -> Unit)? = null
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -30,6 +31,12 @@ fun LandTypeDialog(
                 TextButton(onClick = onBuyer) {
                     Icon(Icons.Default.ShoppingCart, null)
                     Text(stringResource(id = R.string.home_buyer_lands))
+                }
+                onSiteVisitStatus?.let { onClick ->
+                    TextButton(onClick = onClick) {
+                        Icon(Icons.Default.EventAvailable, null)
+                        Text("Site Visit Status")
+                    }
                 }
             }
         },

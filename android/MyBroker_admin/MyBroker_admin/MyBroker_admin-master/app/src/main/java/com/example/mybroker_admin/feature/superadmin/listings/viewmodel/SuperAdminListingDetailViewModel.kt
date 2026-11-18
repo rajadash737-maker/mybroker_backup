@@ -116,8 +116,8 @@ class SuperAdminListingDetailViewModel : ViewModel() {
                     _state.update { it.copy(isLoading = false) }
 
                     val status = d.status.uppercase()
-                    if (status == "BOOKED" || status == "SOLD") {
-                        loadBookedDetail(id)
+                    if (status == "BOOKED" || status == "SOLD" || status == "LIVE") {
+                        loadBookedDetail(id, allowMissingCancelledHistory = status == "LIVE")
                     }
                 }
                 .onFailure { err ->
@@ -163,7 +163,7 @@ class SuperAdminListingDetailViewModel : ViewModel() {
         }
     }
 
-    private fun loadBookedDetail(listingId: Int) {
+    private fun loadBookedDetail(listingId: Int, allowMissingCancelledHistory: Boolean = false) {
         viewModelScope.launch {
             runCatching { repo.getBookedListingDetail(listingId) }
                 .onSuccess { dto ->
@@ -206,7 +206,9 @@ class SuperAdminListingDetailViewModel : ViewModel() {
                         listingId = dto.listing_id,
                         status = dto.status.replace("_", " ").uppercase(),
                         bookedAt = dto.booked_at,
-                        bookingStatus = dto.booking_status.replace("_", " ").uppercase(),
+                        bookingStatus = if (dto.booking_status.equals("cancelled", ignoreCase = true)) {
+                            "Booking Cancelled"
+                        } else dto.booking_status.replace("_", " ").uppercase(),
                         buyer = BookingPartyUi(
                             name = dto.buyer.name,
                             mobile = dto.buyer.mobile,
@@ -230,11 +232,25 @@ class SuperAdminListingDetailViewModel : ViewModel() {
                         fieldOfficer = dto.field_officer?.let {
                             FieldOfficerUi(id = it.id, name = it.fullname, mobile = it.mobile)
                         },
-                        registry = registry
+                        registry = registry,
+                        cancellationReason = dto.cancellation_reason,
+                        refundDecision = dto.refund_decision,
+                        refundStatus = dto.refund_status,
+                        approvedRefundAmount = dto.approved_refund_amount?.let(::formatPrice),
+                        actualRefundedAmount = dto.actual_refunded_amount?.let(::formatPrice),
+                        refundReference = dto.refund_reference,
+                        cancelledAt = dto.cancelled_at
                     )
                 }
                 .onFailure { err ->
-                    _bookingError.value = err.message ?: "Failed to load booking detail"
+                    val expectedMissingHistory = allowMissingCancelledHistory &&
+                        (err as? retrofit2.HttpException)?.code() == 404
+                    if (expectedMissingHistory) {
+                        _bookedDetail.value = null
+                        _bookingError.value = null
+                    } else {
+                        _bookingError.value = err.message ?: "Failed to load booking detail"
+                    }
                 }
         }
     }

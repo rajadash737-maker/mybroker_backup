@@ -51,7 +51,15 @@ data class BuyerOfferItemDto(
     @SerializedName("timeline")
     val timeline: List<BuyerOfferTimelineEventDto>,
     @SerializedName("land")
-    val land: BuyerOfferLandDto
+    val land: BuyerOfferLandDto,
+    @SerializedName("booking_id") val bookingId: Int? = null,
+    @SerializedName("cancellation_reason") val cancellationReason: String? = null,
+    @SerializedName("refund_decision") val refundDecision: String? = null,
+    @SerializedName("refund_status") val refundStatus: String? = null,
+    @SerializedName("approved_refund_amount") val approvedRefundAmount: Double? = null,
+    @SerializedName("actual_refunded_amount") val actualRefundedAmount: Double? = null,
+    @SerializedName("refund_transaction_reference") val refundTransactionReference: String? = null,
+    @SerializedName("refund_confirmed_at") val refundConfirmedAt: String? = null
 )
 
 data class BuyerOfferTimelineEventDto(

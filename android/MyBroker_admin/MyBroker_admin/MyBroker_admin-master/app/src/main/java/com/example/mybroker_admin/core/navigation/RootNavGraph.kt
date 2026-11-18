@@ -1,7 +1,9 @@
-package com.example.mybroker_admin.core.navigation
+﻿package com.example.mybroker_admin.core.navigation
 
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -9,7 +11,16 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.example.mybroker_admin.feature.accounting.dashboard.AccountingDashboardScreen
+import com.example.mybroker_admin.feature.accounting.propertyrefunds.PropertyBookingRefundsScreen
+import com.example.mybroker_admin.feature.sitevisit.AccountingSiteVisitRefundsScreen
+import com.example.mybroker_admin.feature.sitevisit.AccountingSiteVisitRefundDetailScreen
+import com.example.mybroker_admin.feature.sitevisit.SiteVisitAuditScreen
+import com.example.mybroker_admin.feature.sitevisit.SiteVisitAuditDetailScreen
 import com.example.mybroker_admin.feature.admin.dashboard.presentation.AdminDashboardScreen
+import com.example.mybroker_admin.feature.sitevisit.AdminSiteVisitsScreen
+import com.example.mybroker_admin.feature.sitevisit.AdminSiteVisitBookingDetailScreen
+import com.example.mybroker_admin.feature.sitevisit.FieldOfficerSiteVisitsScreen
+import com.example.mybroker_admin.feature.sitevisit.FieldOfficerSiteVisitDetailScreen
 import com.example.mybroker_admin.feature.auth.screen.LoginScreen
 import com.example.mybroker_admin.feature.fieldofficer.dashboard.FieldDashboardScreen
 import com.example.mybroker_admin.feature.superadmin.dashboard.SuperAdminDashboardScreen
@@ -66,6 +77,8 @@ import com.example.mybroker_admin.notification.NotificationStore
 
 @Composable
 fun RootNavGraph(navController: NavHostController) {
+    val siteVisitRefundRefreshKey = remember { mutableStateOf(0) }
+    val siteVisitAuditRefreshKey = remember { mutableStateOf(0) }
 
     val startDestination = remember {
         when (SessionManager.dashboardKey) {
@@ -82,7 +95,7 @@ fun RootNavGraph(navController: NavHostController) {
         startDestination = startDestination
     ) {
 
-        // 🔐 LOGIN
+        // ðŸ” LOGIN
         composable(Routes.LOGIN) {
             LoginScreen(
                 onLoginSuccess = { dashboardKey ->
@@ -105,13 +118,31 @@ fun RootNavGraph(navController: NavHostController) {
             )
         }
 
-        // 👑 SUPER ADMIN DASHBOARD
+        // ðŸ‘‘ SUPER ADMIN DASHBOARD
         composable(Routes.SUPER_ADMIN_DASHBOARD) {
             SuperAdminDashboardScreen(navController)
         }
 
         composable(Routes.SUPER_ADMIN_LISTINGS) {
             SuperAdminListingsScreen(navController)
+        }
+
+        composable(Routes.SUPER_ADMIN_SITE_VISIT_AUDIT) {
+            SiteVisitAuditScreen(
+                refreshKey = siteVisitAuditRefreshKey.value,
+                onBack = { navController.popBackStack() },
+                onOpenBooking = { bookingId -> navController.navigate(Routes.superAdminSiteVisitAuditDetail(bookingId)) }
+            )
+        }
+        composable(
+            route = Routes.SUPER_ADMIN_SITE_VISIT_AUDIT_DETAIL,
+            arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+        ) { entry ->
+            val bookingId = entry.arguments?.getInt("bookingId") ?: return@composable
+            SiteVisitAuditDetailScreen(
+                bookingId = bookingId,
+                onBack = { siteVisitAuditRefreshKey.value++; navController.popBackStack() }
+            )
         }
 
         composable(
@@ -160,7 +191,7 @@ fun RootNavGraph(navController: NavHostController) {
         }
 
         // ================================
-        // 👥 STAFF MANAGEMENT FLOW
+        // ðŸ‘¥ STAFF MANAGEMENT FLOW
         // ================================
 
         composable(Routes.STAFF_MANAGEMENT) {
@@ -201,7 +232,7 @@ fun RootNavGraph(navController: NavHostController) {
 
 
 
-        // ✏ EDIT STAFF
+        // âœ EDIT STAFF
         composable(
             route = Routes.EDIT_STAFF,
             arguments = listOf(navArgument("staffId") { type = NavType.IntType })
@@ -270,6 +301,61 @@ fun RootNavGraph(navController: NavHostController) {
         // ADMIN DASHBOARD
         // ===============================
 
+        composable(Routes.SITE_VISITS) { listEntry ->
+            val refreshKey by listEntry.savedStateHandle
+                .getStateFlow("site_visit_queue_refresh", 0L)
+                .collectAsStateWithLifecycle()
+            AdminSiteVisitsScreen(
+                onOpenBooking = { bookingId -> navController.navigate(Routes.siteVisitAdminDetail(bookingId)) },
+                refreshKey = refreshKey
+            )
+        }
+        composable(
+            route = Routes.SITE_VISIT_ADMIN_DETAIL,
+            arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+        ) { entry ->
+            val bookingId = entry.arguments?.getInt("bookingId") ?: return@composable
+            AdminSiteVisitBookingDetailScreen(
+                bookingId = bookingId,
+                onBookingUpdated = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set("site_visit_queue_refresh", System.currentTimeMillis())
+                },
+                onBack = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set("site_visit_queue_refresh", System.currentTimeMillis())
+                    navController.popBackStack()
+                }
+            )
+        }
+        composable(Routes.FIELD_SITE_VISITS) { listEntry ->
+            val refreshKey by listEntry.savedStateHandle
+                .getStateFlow("field_site_visit_queue_refresh", 0L)
+                .collectAsStateWithLifecycle()
+            FieldOfficerSiteVisitsScreen(
+                onOpenBooking = { bookingId -> navController.navigate(Routes.fieldSiteVisitBookingDetail(bookingId)) },
+                refreshKey = refreshKey
+            )
+        }
+        composable(
+            route = Routes.FIELD_SITE_VISIT_BOOKING_DETAIL,
+            arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+        ) { entry ->
+            val bookingId = entry.arguments?.getInt("bookingId") ?: return@composable
+            FieldOfficerSiteVisitDetailScreen(
+                bookingId = bookingId,
+                onBookingUpdated = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set(
+                        "field_site_visit_queue_refresh", System.currentTimeMillis()
+                    )
+                },
+                onBack = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set(
+                        "field_site_visit_queue_refresh", System.currentTimeMillis()
+                    )
+                    navController.popBackStack()
+                }
+            )
+        }
+
         composable(Routes.ADMIN_DASHBOARD) {
             val vm: AdminDashboardViewModel = viewModel()
             val stats = vm.stats.collectAsStateWithLifecycle().value
@@ -298,7 +384,8 @@ fun RootNavGraph(navController: NavHostController) {
                     navController.navigate(Routes.ADMIN_CANCEL_REFUND)
                 },
                 onProfileClick = { navController.navigate(Routes.PROFILE) },
-                onNotificationsClick = { navController.navigate(Routes.NOTIFICATIONS) }
+                onNotificationsClick = { navController.navigate(Routes.NOTIFICATIONS) },
+                onSiteVisitsClick = { navController.navigate(Routes.SITE_VISITS) }
             )
         }
 
@@ -409,12 +496,16 @@ fun RootNavGraph(navController: NavHostController) {
             )
         }
 
-        composable(Routes.BOOKED_LISTINGS) {
+        composable(Routes.BOOKED_LISTINGS) { listEntry ->
+            val refreshKey by listEntry.savedStateHandle
+                .getStateFlow("booked_listings_refresh", 0L)
+                .collectAsStateWithLifecycle()
             BookedListingsRoute(
                 onListingClick = { listingId ->
                     navController.navigate(Routes.bookedListingDetail(listingId))
                 },
-                onBack = { navController.popBackStack() }
+                onBack = { navController.popBackStack() },
+                refreshKey = refreshKey
             )
         }
 
@@ -477,6 +568,11 @@ fun RootNavGraph(navController: NavHostController) {
             BookedListingDetailRoute(
                 listingId = listingId,
                 onBack = { navController.popBackStack() },
+                onCancellationCompleted = {
+                    navController.previousBackStackEntry?.savedStateHandle?.set(
+                        "booked_listings_refresh", System.currentTimeMillis()
+                    )
+                },
                 onViewDocument = { url ->
                     navController.navigate(
                         Routes.fieldDocumentViewer(url, Routes.bookedListingDetail(listingId))
@@ -525,7 +621,7 @@ fun RootNavGraph(navController: NavHostController) {
 
 
         // ===============================
-        // 🚓 FIELD OFFICER FLOW
+        // ðŸš“ FIELD OFFICER FLOW
         // ===============================
 
         //
@@ -625,12 +721,12 @@ fun RootNavGraph(navController: NavHostController) {
 
 
         // ===============================
-        // 🚓 ACCOUNTING
+        // ðŸš“ ACCOUNTING
         // ===============================
 
 
         //
-        //===== 💰 ACCOUNTING DASHBOARD ========
+        //===== ðŸ’° ACCOUNTING DASHBOARD ========
         //
 
 
@@ -640,12 +736,34 @@ fun RootNavGraph(navController: NavHostController) {
 
 
         //
-        //===== 💰 ACCOUNTING REFUND LIST ========
+        //===== ðŸ’° ACCOUNTING REFUND LIST ========
         //
 
 
         composable(Routes.ACCOUNTING_REFUND_LIST) {
             RefundListScreen()
+        }
+
+        composable(Routes.ACCOUNTING_PROPERTY_BOOKING_REFUNDS) {
+            PropertyBookingRefundsScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(Routes.ACCOUNTING_SITE_VISIT_REFUNDS) {
+            AccountingSiteVisitRefundsScreen(
+                refreshKey = siteVisitRefundRefreshKey.value,
+                onBack = { navController.popBackStack() },
+                onRefundClick = { bookingId -> navController.navigate(Routes.accountingSiteVisitRefundDetail(bookingId)) }
+            )
+        }
+        composable(
+            route = Routes.ACCOUNTING_SITE_VISIT_REFUND_DETAIL,
+            arguments = listOf(navArgument("bookingId") { type = NavType.IntType })
+        ) { entry ->
+            val bookingId = entry.arguments?.getInt("bookingId") ?: return@composable
+            AccountingSiteVisitRefundDetailScreen(
+                bookingId = bookingId,
+                onBack = { siteVisitRefundRefreshKey.value++; navController.popBackStack() }
+            )
         }
 
         composable(Routes.ACCOUNTING_COMPLETED_TRANSACTIONS) {

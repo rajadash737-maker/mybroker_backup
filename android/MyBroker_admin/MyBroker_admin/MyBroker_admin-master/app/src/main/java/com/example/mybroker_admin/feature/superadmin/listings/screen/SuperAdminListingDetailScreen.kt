@@ -17,25 +17,37 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Button
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import android.util.Log
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
+import com.example.mybroker_admin.BuildConfig
+import com.example.mybroker_admin.core.session.SessionManager
+import com.example.mybroker_admin.feature.admin.listings.BookedListingDetailUi
+import com.example.mybroker_admin.feature.admin.listings.BookedListingDetailViewModel
+import com.example.mybroker_admin.feature.admin.listings.PropertyBookingCancellationUiPolicy
+import com.example.mybroker_admin.feature.admin.listings.PropertyBookingCancellationUiState
 import com.example.mybroker_admin.feature.admin.listings.presentation.components.SectionCard
 import com.example.mybroker_admin.feature.admin.listings.BookingDocumentUi
 import com.example.mybroker_admin.data.remote.PrivatePdfViewer
@@ -57,11 +69,54 @@ fun SuperAdminListingDetailScreen(
     val detail by vm.detail.collectAsState()
     val bookedDetail by vm.bookedDetail.collectAsState()
     val bookingError by vm.bookingError.collectAsState()
+    val cancellationVm: BookedListingDetailViewModel = viewModel()
+    val cancellationState by cancellationVm.state.collectAsState()
+    val role = SessionManager.currentUserRole
+    val isSuperAdmin = SessionManager.accessToken != null && PropertyBookingCancellationUiPolicy.isSuperAdmin(role)
+    val cancellationUi = PropertyBookingCancellationUiState(
+        role = role.takeIf { SessionManager.accessToken != null },
+        readOnly = false,
+        previewLoading = cancellationState.isLoadingCancellationPreview,
+        previewError = cancellationState.cancellationPreviewError,
+        preview = cancellationState.cancellationPreview,
+        isSubmitting = cancellationState.isCancellingBooking
+    )
     val context = LocalContext.current
     val documentScope = rememberCoroutineScope()
 
     androidx.compose.runtime.LaunchedEffect(listingId) {
         vm.loadDetail(listingId)
+    }
+    LaunchedEffect(bookedDetail?.bookingId, isSuperAdmin) {
+        if (isSuperAdmin) bookedDetail?.bookingId?.let(cancellationVm::loadCancellationPreview)
+    }
+    LaunchedEffect(cancellationState.cancellationCompleted) {
+        if (cancellationState.cancellationCompleted) vm.loadDetail(listingId)
+    }
+    LaunchedEffect(
+        role,
+        isSuperAdmin,
+        listingId,
+        bookedDetail?.bookingId,
+        bookedDetail?.bookingStatus,
+        cancellationState.isLoadingCancellationPreview,
+        cancellationState.cancellationPreviewError,
+        cancellationState.cancellationPreview?.can_cancel
+    ) {
+        if (BuildConfig.DEBUG) {
+            Log.d(
+                "BookingCancelUi",
+                "screen=SuperAdminListingDetail role_raw=$role " +
+                    "role_normalized=${PropertyBookingCancellationUiPolicy.normalizeRole(role)} " +
+                    "is_super_admin=$isSuperAdmin listing_id=$listingId " +
+                    "booking_id=${bookedDetail?.bookingId ?: cancellationState.cancellationPreview?.booking_id} " +
+                    "booking_status=${bookedDetail?.bookingStatus ?: cancellationState.cancellationPreview?.booking_status} " +
+                    "preview_loading=${cancellationState.isLoadingCancellationPreview} " +
+                    "preview_failed=${cancellationState.cancellationPreviewError != null} " +
+                    "can_cancel=${cancellationState.cancellationPreview?.can_cancel} " +
+                    "section_visible=${cancellationUi.actionsVisible}"
+            )
+        }
     }
 
     Scaffold(
@@ -83,6 +138,11 @@ fun SuperAdminListingDetailScreen(
                     .padding(padding)
                     .padding(16.dp)
             ) {
+                SuperAdminPropertyBookingActions(
+                    listingId, null, cancellationState, cancellationUi,
+                    { id -> cancellationVm.loadCancellationPreview(id) },
+                    { id, choice, amount, reason -> cancellationVm.cancelPropertyBooking(id, choice, amount, reason) }
+                )
                 CircularProgressIndicator()
             }
             return@Scaffold
@@ -95,6 +155,11 @@ fun SuperAdminListingDetailScreen(
                     .padding(padding)
                     .padding(16.dp)
             ) {
+                SuperAdminPropertyBookingActions(
+                    listingId, null, cancellationState, cancellationUi,
+                    { id -> cancellationVm.loadCancellationPreview(id) },
+                    { id, choice, amount, reason -> cancellationVm.cancelPropertyBooking(id, choice, amount, reason) }
+                )
                 Text(text = state.error ?: "Failed to load detail", color = MaterialTheme.colorScheme.error)
             }
             return@Scaffold
@@ -107,6 +172,11 @@ fun SuperAdminListingDetailScreen(
                     .padding(padding)
                     .padding(16.dp)
             ) {
+                SuperAdminPropertyBookingActions(
+                    listingId, null, cancellationState, cancellationUi,
+                    { id -> cancellationVm.loadCancellationPreview(id) },
+                    { id, choice, amount, reason -> cancellationVm.cancelPropertyBooking(id, choice, amount, reason) }
+                )
                 Text("Listing not found")
             }
             return@Scaffold
@@ -119,6 +189,12 @@ fun SuperAdminListingDetailScreen(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            SuperAdminPropertyBookingActions(
+                listingId, bookedDetail, cancellationState, cancellationUi,
+                { id -> cancellationVm.loadCancellationPreview(id) },
+                { id, choice, amount, reason -> cancellationVm.cancelPropertyBooking(id, choice, amount, reason) }
+            )
+            Spacer(Modifier.height(12.dp))
             SectionCard(title = "Status & Review") {
                 Text("Current Status: ${detail!!.status}")
                 if (!detail!!.reviewedAt.isNullOrBlank()) {
@@ -210,9 +286,25 @@ fun SuperAdminListingDetailScreen(
 
             if (bookedDetail != null) {
                 SectionCard(title = "Booking Summary") {
+                    Text("Booking Reference: ${bookedDetail!!.bookingId}")
                     Text("Booked At: ${formatDateTime(bookedDetail!!.bookedAt)}")
                     Text("Booking Status: ${bookedDetail!!.bookingStatus}")
                     Text("Deal Price: ${bookedDetail!!.land.dealPrice ?: "-"}")
+                }
+
+                if (bookedDetail!!.bookingStatus == "Booking Cancelled") {
+                    Spacer(Modifier.height(12.dp))
+                    SectionCard(title = "Booking Cancellation") {
+                        Text("Booking Reference: ${bookedDetail!!.bookingId}")
+                        Text("Cancellation Reason: ${bookedDetail!!.cancellationReason ?: "Unavailable"}")
+                        Text("Refund Decision: ${bookedDetail!!.refundDecision ?: "Unavailable"}")
+                        Text("Refund Status: ${bookedDetail!!.refundStatus ?: "Unavailable"}")
+                        Text(
+                            "Refund Amount: ${if (bookedDetail!!.refundDecision == "NO_REFUND") "No Refund" else bookedDetail!!.actualRefundedAmount ?: bookedDetail!!.approvedRefundAmount ?: "Unavailable"}"
+                        )
+                        bookedDetail!!.refundReference?.let { Text("Refund Reference: $it") }
+                        bookedDetail!!.cancelledAt?.let { Text("Cancelled At: ${formatDateTime(it)}") }
+                    }
                 }
 
                 Spacer(Modifier.height(12.dp))
@@ -371,6 +463,141 @@ fun SuperAdminListingDetailScreen(
                 TimelineItem("Refund Completed", detail!!.refundCompletedAt)
             }
         }
+    }
+}
+
+@Composable
+private fun SuperAdminPropertyBookingActions(
+    listingId: Int,
+    booking: BookedListingDetailUi?,
+    state: com.example.mybroker_admin.feature.admin.listings.BookedListingDetailState,
+    cancellationUi: PropertyBookingCancellationUiState,
+    onRetryPreview: (Int) -> Unit,
+    onCancelBooking: (Int, String, Double, String) -> Unit
+) {
+    if (!cancellationUi.actionsVisible) return
+
+    val preview = state.cancellationPreview?.takeIf {
+        booking != null && it.booking_id == booking.bookingId && it.listing_id == listingId
+    }
+    val dialogOpen = remember { mutableStateOf(false) }
+    val reason = remember { mutableStateOf("") }
+    val decision = remember { mutableStateOf("REFUND") }
+    val formError = remember { mutableStateOf<String?>(null) }
+    val refundAmount = remember(preview?.captured_payment_amount) {
+        mutableStateOf(preview?.captured_payment_amount?.toString().orEmpty())
+    }
+    val bookingId = booking?.bookingId ?: preview?.booking_id
+
+    SectionCard(title = "SUPER ADMIN ACTIONS") {
+        Text("Booking ID: ${bookingId?.toString() ?: "Loading booking details"}")
+        Text("Listing ID: ${preview?.listing_id ?: booking?.listingId ?: listingId}")
+        Text("Booking Status: ${preview?.booking_status ?: booking?.bookingStatus ?: "Unavailable"}")
+        preview?.captured_payment_amount?.let { Text("Verified captured payment: ₹$it") }
+
+        when {
+            state.isLoadingCancellationPreview -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.height(20.dp))
+                    Text(" Checking cancellation eligibility")
+                }
+            }
+            state.cancellationPreviewError != null ->
+                Text(state.cancellationPreviewError, color = MaterialTheme.colorScheme.error)
+            preview != null && !preview.can_cancel ->
+                Text(
+                    preview.blocking_reason ?: "This booking is not eligible for cancellation.",
+                    color = MaterialTheme.colorScheme.error
+                )
+            bookingId == null -> Text("Waiting for booking details")
+            preview?.can_cancel == true ->
+                Text("This booking is eligible for cancellation.", color = MaterialTheme.colorScheme.primary)
+        }
+
+        if (state.cancellationPreviewError != null && bookingId != null) {
+            TextButton(
+                onClick = { onRetryPreview(bookingId) },
+                enabled = !state.isLoadingCancellationPreview
+            ) { Text("Retry Preview") }
+        }
+
+        Button(
+            onClick = {
+                formError.value = null
+                reason.value = ""
+                dialogOpen.value = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = bookingId != null && !state.isCancellingBooking && preview?.can_cancel != false
+        ) { Text("CANCEL PROPERTY BOOKING") }
+    }
+
+    if (dialogOpen.value) {
+        AlertDialog(
+            onDismissRequest = { if (!state.isCancellingBooking) dialogOpen.value = false },
+            title = { Text("Cancel Property Booking") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Booking ID: ${bookingId ?: "Unavailable"} · Listing ID: $listingId")
+                    Text("Captured payment: ${preview?.captured_payment_amount?.let { "₹$it" } ?: "Unavailable"}")
+                    if (decision.value == "REFUND") {
+                        Text("Default refundable amount: ${preview?.captured_payment_amount?.let { "₹$it" } ?: "Unavailable"}")
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { decision.value = "REFUND" }) {
+                            Text(if (decision.value == "REFUND") "✓ Refund" else "Refund")
+                        }
+                        OutlinedButton(onClick = { decision.value = "NO_REFUND" }) {
+                            Text(if (decision.value == "NO_REFUND") "✓ No Refund" else "No Refund")
+                        }
+                    }
+                    if (decision.value == "REFUND") {
+                        OutlinedTextField(
+                            value = refundAmount.value,
+                            onValueChange = { refundAmount.value = it },
+                            label = { Text("Refund amount") },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                    OutlinedTextField(
+                        value = reason.value,
+                        onValueChange = { reason.value = it },
+                        label = { Text("Reason (required)") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    formError.value?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    state.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !state.isCancellingBooking,
+                    onClick = {
+                        val amount = PropertyBookingCancellationUiPolicy.amountForSubmission(
+                            decision.value,
+                            refundAmount.value,
+                            preview?.captured_payment_amount
+                        )
+                        when {
+                            reason.value.trim().length < 5 -> formError.value = "Enter a cancellation reason (at least 5 characters)."
+                            bookingId == null -> formError.value = "Booking details are not available yet."
+                            amount == null -> formError.value = "Enter a valid refund amount within the captured payment."
+                            else -> {
+                                formError.value = null
+                                onCancelBooking(bookingId, decision.value, amount, reason.value.trim())
+                                dialogOpen.value = false
+                            }
+                        }
+                    }
+                ) { Text(if (state.isCancellingBooking) "Submitting…" else "Confirm Cancellation") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !state.isCancellingBooking,
+                    onClick = { dialogOpen.value = false }
+                ) { Text("Back") }
+            }
+        )
     }
 }
 

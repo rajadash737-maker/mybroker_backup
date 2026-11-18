@@ -81,7 +81,7 @@ object ApiClient {
 
         val sessionManager = SessionManager(context.applicationContext)
 
-        Log.i(TAG, "Initializing ApiClient with BASE_URL=$BASE_URL")
+        Log.i(TAG, "ApiClient initialized")
 
         val logging = HttpLoggingInterceptor().apply {
             // Auth requests include password, refresh, and Google ID tokens; never log bodies.
@@ -90,6 +90,11 @@ object ApiClient {
 
         val refreshRetrofit = Retrofit.Builder()
             .baseUrl(BASE_URL)
+            .client(OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(30, TimeUnit.SECONDS)
+                .build())
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
@@ -114,3 +119,4 @@ object ApiClient {
         initialized = true
     }
 }
+

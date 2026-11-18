@@ -32,7 +32,7 @@ from app.sell_land.media_storage import (
     save_listing_media_file,
 )
 from app.sell_land.schemas import SellLandMediaUploadResponse
-from app.sell_land.models import SellLandBooking, SellLandMedia, SellLandOffer, SellLandPayment, SellLandRequest
+from app.sell_land.models import PropertyBookingRefund, SellLandBooking, SellLandMedia, SellLandOffer, SellLandPayment, SellLandRequest
 from app.sell_land.repository import (
     add_media,
     apply_buyer_reject_counter_offer,
@@ -52,7 +52,7 @@ from app.sell_land.repository import (
     get_favorite_counts_for_request_ids,
     get_offer_counts_for_request_ids,
     get_booking_by_id_for_buyer,
-    get_booking_for_listing_buyer,
+    get_current_booking_for_listing_buyer,
     get_live_sell_land_request_by_id,
     get_user_by_id,
     get_document_media_by_type,
@@ -68,6 +68,7 @@ from app.sell_land.repository import (
     list_media_for_requests,
     list_media,
     list_offers_for_buyer,
+    get_incoming_offer_counts,
     list_offers_for_request,
     list_paid_bookings_for_buyer,
     list_sell_land_requests_by_user,
@@ -98,6 +99,7 @@ from app.sell_land.schemas import (
     BuyerOfferCreateResponse,
     BuyerOfferItem,
     BuyerOfferLandSummary,
+    IncomingOfferCountResponse,
     BuyerOfferListResponse,
     BuyerOfferTimelineEvent,
     BuyerBookingCreateRequest,
@@ -370,6 +372,7 @@ def _booking_status_label(status: BuyerOfferBookingStatus | None) -> str | None:
         BuyerOfferBookingStatus.REGISTRY_SCHEDULED: "Registry scheduled",
         BuyerOfferBookingStatus.REGISTRY_DONE: "Registry done",
         BuyerOfferBookingStatus.SOLD: "Sold",
+        BuyerOfferBookingStatus.CANCELLED: "Cancelled",
     }.get(status)
 
 
@@ -442,7 +445,10 @@ def list_my_request_tracking(db: Session, user_id: int) -> list[SellLandTracking
         card.offer_count = offer_count_by_request_id.get(item.id, 0)
         booking = (
             db.query(SellLandBooking)
-            .filter(SellLandBooking.request_id == item.id)
+            .filter(
+                SellLandBooking.request_id == item.id,
+                SellLandBooking.booking_status != BookingStatus.CANCELLED.value,
+            )
             .order_by(SellLandBooking.created_at.desc(), SellLandBooking.id.desc())
             .first()
         )
@@ -461,6 +467,15 @@ def list_my_request_tracking(db: Session, user_id: int) -> list[SellLandTracking
                 RegistryProofItem.model_validate(proof)
                 for proof in list_registry_proofs_for_booking(db, booking.id)
             ]
+        elif item.accepted_offer_id is not None:
+            accepted_offer = get_offer_by_id(db, request_id=item.id, offer_id=item.accepted_offer_id)
+            if accepted_offer and accepted_offer.status == OfferStatus.ACCEPTED.value:
+                accepted_amount = (
+                    accepted_offer.counter_amount
+                    if accepted_offer.counter_amount is not None
+                    else accepted_offer.offered_amount
+                )
+                card.deal_amount = _amount_value(accepted_amount)
         cards.append(card)
 
     return cards
@@ -1091,7 +1106,7 @@ def get_buyer_land_detail_for_buyer(
         )
         .first()
     )
-    booking = get_booking_for_listing_buyer(db, request_id, buyer_id)
+    booking = get_current_booking_for_listing_buyer(db, request_id, buyer_id)
 
     if not has_offer and not booking:
         return None, "Not authorized"
@@ -1112,7 +1127,16 @@ def get_buyer_land_detail_for_buyer(
         f"https://www.google.com/maps/search/?api=1&query={quote_plus(map_query)}" if map_query else None
     )
 
-    deal_amount = booking.deal_amount if booking else None
+    accepted_offer = None
+    if request.accepted_offer_id is not None:
+        candidate = get_offer_by_id(db, request_id=request.id, offer_id=request.accepted_offer_id)
+        if candidate and candidate.status == OfferStatus.ACCEPTED.value:
+            accepted_offer = candidate
+    deal_amount = (
+        booking.deal_amount if booking else
+        (accepted_offer.counter_amount if accepted_offer and accepted_offer.counter_amount is not None else
+         accepted_offer.offered_amount if accepted_offer else None)
+    )
     booking_status: BookingStatus | None = None
     registry_date = None
     registry_time = None
@@ -1302,21 +1326,48 @@ def list_my_buyer_offers(
     release_expired_offer_locks(db)
     rows = list_offers_for_buyer(db, buyer_id=user_id)
     items: list[BuyerOfferItem] = []
-    offer_request_ids: set[int] = set()
+    matched_booking_ids: set[int] = set()
     for offer, listing in rows:
-        offer_request_ids.add(listing.id)
         booking_status, status_label, is_active_window, lock_expires_at = _derive_buyer_booking_state(
             listing=listing,
             offer=offer,
             buyer_id=user_id,
         )
-        booking = get_booking_for_listing_buyer(db, listing.id, user_id)
+        booking = None
+        current_booking = get_current_booking_for_listing_buyer(db, listing.id, user_id)
+        if current_booking and listing.accepted_offer_id == offer.id:
+            booking = current_booking
+        elif offer.status in {OfferStatus.ACCEPTED.value, OfferStatus.EXPIRED.value}:
+            accepted_amount = offer.counter_amount if offer.counter_amount is not None else offer.offered_amount
+            historical = (
+                db.query(SellLandBooking, PropertyBookingRefund)
+                .join(PropertyBookingRefund, PropertyBookingRefund.booking_id == SellLandBooking.id)
+                .filter(
+                    SellLandBooking.request_id == listing.id,
+                    SellLandBooking.buyer_id == user_id,
+                    SellLandBooking.booking_status == BookingStatus.CANCELLED.value,
+                    SellLandBooking.deal_amount == accepted_amount,
+                )
+                .order_by(SellLandBooking.created_at.desc(), SellLandBooking.id.desc())
+                .all()
+            )
+            booking = next((
+                candidate for candidate, refund_case in historical
+                if offer.seller_response_at is not None
+                and offer.seller_response_at <= candidate.created_at <= refund_case.cancelled_at
+            ), None)
+        if booking:
+            matched_booking_ids.add(booking.id)
+        refund = db.query(PropertyBookingRefund).filter_by(booking_id=booking.id).first() if booking else None
         registry_date = None
         registry_time = None
         registry_location = None
         if booking and booking.payment_status == PaymentStatus.SUCCESS.value:
             normalized_status = _normalize_booking_status(booking.booking_status)
-            if listing.status == SellLandStatus.SOLD.value:
+            if normalized_status == BuyerOfferBookingStatus.CANCELLED:
+                booking_status = normalized_status
+                status_label = _booking_status_label(booking_status) or "Cancelled"
+            elif listing.status == SellLandStatus.SOLD.value:
                 booking_status = BuyerOfferBookingStatus.SOLD
                 status_label = _booking_status_label(booking_status) or "Sold"
             else:
@@ -1353,6 +1404,14 @@ def list_my_buyer_offers(
                 registry_date=registry_date,
                 registry_time=registry_time,
                 registry_location=registry_location,
+                booking_id=booking.id if booking else None,
+                cancellation_reason=refund.cancellation_reason if refund else None,
+                refund_decision=refund.refund_decision if refund else None,
+                refund_status=refund.refund_status if refund else None,
+                approved_refund_amount=refund.approved_refund_amount if refund else None,
+                actual_refunded_amount=refund.actual_refunded_amount if refund else None,
+                refund_transaction_reference=refund.transaction_reference if refund else None,
+                refund_confirmed_at=refund.accounting_confirmed_at if refund else None,
                 land=BuyerOfferLandSummary(
                     id=listing.id,
                     title=listing.title,
@@ -1366,8 +1425,10 @@ def list_my_buyer_offers(
         )
     booking_rows = list_paid_bookings_for_buyer(db, buyer_id=user_id)
     for booking, listing in booking_rows:
-        if listing.id in offer_request_ids:
+        if booking.id in matched_booking_ids:
             continue
+        refund = db.query(PropertyBookingRefund).filter_by(booking_id=booking.id).first()
+        booking_state = _normalize_booking_status(booking.booking_status) or BuyerOfferBookingStatus.BOOKED
         items.append(
             BuyerOfferItem(
                 offer_id=booking.id,
@@ -1376,8 +1437,8 @@ def list_my_buyer_offers(
                 counter_amount=None,
                 final_amount=_amount_value(booking.deal_amount),
                 offer_status=OfferStatus.ACCEPTED.value,
-                booking_status=BuyerOfferBookingStatus.BOOKED,
-                status_label="Booked",
+                booking_status=booking_state,
+                status_label=_booking_status_label(booking_state) or "Booked",
                 is_book_window_active=False,
                 offer_lock_expires_at=None,
                 created_at=booking.created_at,
@@ -1389,6 +1450,14 @@ def list_my_buyer_offers(
                 registry_date=booking.registry_date,
                 registry_time=booking.registry_time,
                 registry_location=booking.registry_location,
+                booking_id=booking.id,
+                cancellation_reason=refund.cancellation_reason if refund else None,
+                refund_decision=refund.refund_decision if refund else None,
+                refund_status=refund.refund_status if refund else None,
+                approved_refund_amount=refund.approved_refund_amount if refund else None,
+                actual_refunded_amount=refund.actual_refunded_amount if refund else None,
+                refund_transaction_reference=refund.transaction_reference if refund else None,
+                refund_confirmed_at=refund.accounting_confirmed_at if refund else None,
                 land=BuyerOfferLandSummary(
                     id=listing.id,
                     title=listing.title,
@@ -1401,6 +1470,10 @@ def list_my_buyer_offers(
             )
         )
     return BuyerOfferListResponse(total=len(items), items=items)
+
+
+def get_my_incoming_offer_count(db: Session, user_id: int) -> IncomingOfferCountResponse:
+    return IncomingOfferCountResponse(**get_incoming_offer_counts(db, user_id))
 
 
 def get_booking_preview_for_buyer(
@@ -1452,7 +1525,7 @@ def get_booking_preview_for_buyer(
     if deal_amount is None:
         return None, "Expected price not available for direct booking"
 
-    existing_booking = get_booking_for_listing_buyer(db, listing.id, user_id)
+    existing_booking = get_current_booking_for_listing_buyer(db, listing.id, user_id)
     if existing_booking and existing_booking.booking_fee_amount is not None:
         buyer_fee = float(existing_booking.booking_fee_amount)
     else:
@@ -1589,6 +1662,28 @@ def list_my_listing_offers(
         return None, "Sell land request not found"
 
     rows = list_offers_for_request(db, request_id)
+    cancelled_booking_history = (
+        db.query(SellLandBooking, PropertyBookingRefund)
+        .join(PropertyBookingRefund, PropertyBookingRefund.booking_id == SellLandBooking.id)
+        .filter(
+            SellLandBooking.request_id == request_id,
+            SellLandBooking.booking_status == BookingStatus.CANCELLED.value,
+        )
+        .all()
+    )
+
+    def booking_was_cancelled_for_offer(offer: SellLandOffer) -> bool:
+        accepted_amount = offer.counter_amount if offer.counter_amount is not None else offer.offered_amount
+        return any(
+            booking.buyer_id == offer.buyer_id
+            and Decimal(str(booking.deal_amount)) == Decimal(str(accepted_amount))
+            and offer.seller_response_at is not None
+            and booking.created_at <= refund.cancelled_at
+            and offer.seller_response_at <= booking.created_at
+            and offer.seller_response_at <= refund.cancelled_at
+            for booking, refund in cancelled_booking_history
+        )
+
     items = [
         SellerOfferItem(
             id=offer.id,
@@ -1596,7 +1691,18 @@ def list_my_listing_offers(
             buyer_id=offer.buyer_id,
             offered_amount=_amount_value(offer.offered_amount),
             counter_amount=_amount_value(offer.counter_amount),
-            offer_status=offer.status,
+            offer_status=(
+                OfferStatus.EXPIRED
+                if offer.status == OfferStatus.ACCEPTED.value
+                and (
+                    booking_was_cancelled_for_offer(offer)
+                    or (
+                        listing.status == SellLandStatus.LIVE.value
+                        and listing.accepted_offer_id != offer.id
+                    )
+                )
+                else offer.status
+            ),
             created_at=offer.created_at,
             seller_response_at=offer.seller_response_at,
             buyer={
@@ -1786,6 +1892,29 @@ def create_booking_for_buyer(
         return None, "Sell land request not found"
     if listing.status != SellLandStatus.LIVE.value:
         return None, "Only live listings can be booked"
+    other_buyer_booking = (
+        db.query(SellLandBooking.id)
+        .filter(
+            SellLandBooking.request_id == listing.id,
+            SellLandBooking.buyer_id != user_id,
+            SellLandBooking.booking_status != BookingStatus.CANCELLED.value,
+            SellLandBooking.payment_status != PaymentStatus.FAILED.value,
+        )
+        .first()
+    )
+    if other_buyer_booking:
+        return None, "Another buyer has an unfinished booking for this listing"
+    unresolved_refund = (
+        db.query(PropertyBookingRefund.id)
+        .filter(
+            PropertyBookingRefund.listing_id == listing.id,
+            PropertyBookingRefund.refund_decision == "REFUND",
+            PropertyBookingRefund.refund_status.in_(("AWAITING_BUYER_DETAILS", "PENDING_ACCOUNTING", "FAILED")),
+        )
+        .first()
+    )
+    if unresolved_refund:
+        return None, "A previous property booking refund must be resolved before rebooking"
     deal_amount: Decimal | int | float | None = None
     if listing.accepted_offer_id is not None:
         if listing.offer_locked_by_buyer_id != user_id or not _is_offer_lock_active(listing):
@@ -1802,7 +1931,7 @@ def create_booking_for_buyer(
             int(getattr(listing, "pricing_version", 1) or 1),
         )
 
-    existing = get_booking_for_listing_buyer(db, listing.id, user_id)
+    existing = get_current_booking_for_listing_buyer(db, listing.id, user_id)
     if existing:
         if existing.payment_status == PaymentStatus.SUCCESS.value:
             return None, "Booking already completed"

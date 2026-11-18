@@ -1,7 +1,7 @@
-package com.example.mybroker_admin.core.config
+﻿package com.example.mybroker_admin.core.config
 
-
+import com.example.mybroker_admin.BuildConfig
 
 object AppEnv {
-    const val BASE_URL = "http://10.18.79.22:8000/"
+    const val BASE_URL = BuildConfig.BASE_URL
 }

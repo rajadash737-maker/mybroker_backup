@@ -1,9 +1,12 @@
 from decimal import Decimal, ROUND_HALF_UP
 import logging
 import os
+import time
 
 import razorpay
 from razorpay.errors import SignatureVerificationError
+from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.payments.repository import (
@@ -16,7 +19,6 @@ from app.payments.repository import (
     list_webhook_logs,
     mark_payment_failed,
     mark_payment_success,
-    update_webhook_log_attempt,
 )
 from app.payments.schemas import CreateOrderRequest, CreateOrderResponse, VerifyPaymentRequest, VerifyPaymentResponse
 from app.sell_land.constants import PaymentStatus, SellLandStatus
@@ -306,6 +308,76 @@ def verify_payment(
     )
 
 
+def _claim_webhook_event(
+    db: Session,
+    *,
+    event_id: str | None,
+    event: str,
+    payload_json: str,
+    signature: str | None,
+    order_id: str | None,
+    payment_id: str | None,
+) -> tuple[object, bool]:
+    """Reserve a provider event in the same transaction as its payment change."""
+    for attempt in range(3):
+        try:
+            log = create_webhook_log(
+                db,
+                event_id=event_id,
+                event_key=event_id,
+                event=event,
+                order_id=order_id,
+                payment_id=payment_id,
+                signature=signature,
+                payload=payload_json,
+                status="received",
+                commit=False,
+            )
+            return log, False
+        except (IntegrityError, OperationalError):
+            db.rollback()
+            existing = (
+                get_webhook_log_by_event_id(db, event_id, for_update=True)
+                if event_id
+                else None
+            )
+            if existing is not None:
+                if existing.status in {"processed", "duplicate", "ignored", "reconciliation_required"}:
+                    existing.attempt_count = (existing.attempt_count or 0) + 1
+                    existing.last_attempt_at = func.now()
+                    db.commit()
+                    logger.info("webhook_idempotent event_id=%s status=%s", event_id, existing.status)
+                    return existing, True
+                existing.attempt_count = (existing.attempt_count or 0) + 1
+                existing.event = event
+                existing.status = "received"
+                existing.error = None
+                existing.payload = payload_json
+                existing.order_id = order_id
+                existing.payment_id = payment_id
+                existing.signature = signature
+                db.flush()
+                return existing, False
+            if attempt == 2:
+                raise
+            time.sleep(0.025 * (attempt + 1))
+    raise RuntimeError("Could not reserve webhook event")
+
+
+def _finish_webhook_event(
+    db: Session,
+    log,
+    *,
+    status: str,
+    payment_context: str,
+    error: str | None = None,
+) -> None:
+    log.status = status
+    log.payment_context = payment_context
+    log.error = error
+    db.flush()
+
+
 def handle_webhook_event(
     db: Session,
     *,
@@ -319,118 +391,58 @@ def handle_webhook_event(
     amount_paise: int | None = None,
     currency: str | None = None,
 ) -> tuple[bool, str | None]:
-    existing = None
-    if event_id:
-        existing = get_webhook_log_by_event_id(db, event_id)
-        if existing and existing.status in {"processed", "duplicate"}:
-            logger.info("webhook_idempotent event_id=%s status=%s", event_id, existing.status)
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status=existing.status,
-                payment_context=existing.payment_context,
-                error=existing.error,
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-            return True, None
-
-    if event not in {"payment.captured", "payment.failed"}:
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="ignored",
-                payment_context="unknown",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
-                db,
-                event_id=event_id,
-                event=event,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="ignored",
-                payment_context="unknown",
-            )
-        logger.info("webhook_ignored event=%s event_id=%s order_id=%s", event, event_id, order_id)
-        return True, None
+    if event_id is not None and (not event_id or len(event_id) > 80):
+        return False, "Invalid webhook event ID"
 
     expected_status = "captured" if event == "payment.captured" else "failed"
-    if payment_status != expected_status:
+    if event in {"payment.captured", "payment.failed"} and payment_status != expected_status:
         return False, "Payment status does not match webhook event"
     if event == "payment.captured" and (not payment_id or amount_paise is None or not currency):
         return False, "Captured payment is missing verification fields"
 
+    log, duplicate = _claim_webhook_event(
+        db,
+        event_id=event_id,
+        event=event,
+        payload_json=payload_json,
+        signature=signature,
+        order_id=order_id,
+        payment_id=payment_id,
+    )
+    if duplicate:
+        return True, None
+
+    def finish(status: str, context: str, error: str | None = None) -> None:
+        _finish_webhook_event(
+            db, log, status=status, payment_context=context, error=error
+        )
+
+    if event not in {"payment.captured", "payment.failed"}:
+        finish("ignored", "unknown")
+        db.commit()
+        logger.info("webhook_ignored event=%s event_id=%s order_id=%s", event, event_id, order_id)
+        return True, None
+
     if not order_id:
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="failed",
-                payment_context="unknown",
-                error="Missing order_id in webhook payload",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
-                db,
-                event_id=event_id,
-                event=event,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="failed",
-                payment_context="unknown",
-                error="Missing order_id in webhook payload",
-            )
+        error = "Missing order_id"
+        finish("failed", "unknown", error)
+        db.commit()
         logger.warning("webhook_missing_order_id event=%s event_id=%s", event, event_id)
-        return False, "Missing order_id"
+        return False, error
 
     seller_payment = get_payment_by_provider_ref(db, order_id, for_update=True)
     if seller_payment:
         if event == "payment.captured" and (
             amount_paise != _to_paise(float(seller_payment.amount)) or currency != "INR"
         ):
+            db.rollback()
             return False, "Payment amount or currency does not match seller order"
         if seller_payment.status == PaymentStatus.SUCCESS.value:
             if seller_payment.gateway_payment_id != payment_id:
+                db.rollback()
                 return False, "Payment ID does not match the successful seller payment"
-            if existing:
-                update_webhook_log_attempt(
-                    db,
-                    existing,
-                    status="duplicate",
-                    payment_context="seller",
-                    payload=payload_json,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                )
-            else:
-                create_webhook_log(
-                    db,
-                    event_id=event_id,
-                    event=event,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                    payload=payload_json,
-                    status="duplicate",
-                    payment_context="seller",
-                )
+            finish("duplicate", "seller")
+            db.commit()
             logger.info("webhook_duplicate_seller event=%s order_id=%s", event, order_id)
             return True, None
 
@@ -449,121 +461,94 @@ def handle_webhook_event(
                 db.rollback()
                 return False, "Listing not found"
             mark_listing_pending_after_payment(db, listing, commit=False)
+            finish("processed", "seller")
             db.commit()
-            if existing:
-                update_webhook_log_attempt(
-                    db,
-                    existing,
-                    status="processed",
-                    payment_context="seller",
-                    payload=payload_json,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                )
-            else:
-                create_webhook_log(
-                    db,
-                    event_id=event_id,
-                    event=event,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                    payload=payload_json,
-                    status="processed",
-                    payment_context="seller",
-                )
             logger.info("webhook_seller_payment_captured order_id=%s payment_id=%s", order_id, payment_id)
             return True, None
 
-        if event == "payment.failed":
-            mark_seller_payment_failed(db, seller_payment, commit=False)
-            db.commit()
-            if existing:
-                update_webhook_log_attempt(
-                    db,
-                    existing,
-                    status="processed",
-                    payment_context="seller",
-                    payload=payload_json,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                )
-            else:
-                create_webhook_log(
-                    db,
-                    event_id=event_id,
-                    event=event,
-                    order_id=order_id,
-                    payment_id=payment_id,
-                    signature=signature,
-                    payload=payload_json,
-                    status="processed",
-                    payment_context="seller",
-                )
-            logger.info("webhook_seller_payment_failed order_id=%s payment_id=%s", order_id, payment_id)
-            return True, None
+        mark_seller_payment_failed(db, seller_payment, commit=False)
+        finish("processed", "seller")
+        db.commit()
+        logger.info("webhook_seller_payment_failed order_id=%s payment_id=%s", order_id, payment_id)
+        return True, None
 
-    order = get_payment_order_by_order_id(db, order_id, for_update=True)
+    order = get_payment_order_by_order_id(db, order_id)
     if not order:
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="failed",
-                payment_context="buyer",
-                error="Order not found",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
+        finish("failed", "buyer", "Order not found")
+        db.commit()
+        logger.warning("webhook_order_not_found event=%s order_id=%s", event, order_id)
+        return False, "Order not found"
+
+    # Site Visit orders share the established Razorpay order ledger, but their
+    # booking transition stays in the same transaction as this unique event row.
+    from app.site_visits.payment_service import handle_site_visit_webhook, is_site_visit_order
+
+    if is_site_visit_order(db, order.order_id):
+        ok, reconciliation, error, auto_assigned_officer_id = handle_site_visit_webhook(
+            db,
+            order=order,
+            event=event,
+            payment_id=payment_id,
+            signature=signature,
+            amount_paise=amount_paise,
+            currency=currency,
+        )
+        if not ok:
+            db.rollback()
+            failed_log, duplicate = _claim_webhook_event(
                 db,
                 event_id=event_id,
                 event=event,
+                payload_json=payload_json,
+                signature=signature,
                 order_id=order_id,
                 payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="failed",
-                payment_context="buyer",
-                error="Order not found",
             )
-        logger.warning("webhook_order_not_found event=%s order_id=%s", event, order_id)
+            if duplicate:
+                return True, None
+            _finish_webhook_event(
+                db,
+                failed_log,
+                status="failed",
+                payment_context="site_visit",
+                error=error,
+            )
+            db.commit()
+            return False, error
+        finish("reconciliation_required" if reconciliation else "processed", "site_visit")
+        db.commit()
+        from app.site_visits.service import notify_site_visit_payment_event
+        notify_site_visit_payment_event(
+            db,
+            booking_id=order.site_visit_request_id,
+            event="PAYMENT_FAILED" if event == "payment.failed" else "PAYMENT_SUCCESS",
+        )
+        if auto_assigned_officer_id is not None:
+            from app.site_visits.service import notify_site_visit_auto_assignment
+
+            notify_site_visit_auto_assignment(
+                db,
+                request_id=order.site_visit_request_id,
+                field_officer_id=auto_assigned_officer_id,
+            )
+        return True, None
+
+    # Preserve the established row lock for buyer property payments. Site Visit
+    # callbacks lock booking then order in the same order as buyer operations.
+    order = get_payment_order_by_order_id(db, order_id, for_update=True)
+    if order is None:
+        db.rollback()
         return False, "Order not found"
 
     if event == "payment.captured" and (
         amount_paise != order.amount_paise or currency != order.currency
     ):
+        db.rollback()
         return False, "Payment amount or currency does not match order"
 
     if order.status == "SUCCESS":
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="duplicate",
-                payment_context="buyer",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
-                db,
-                event_id=event_id,
-                event=event,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="duplicate",
-                payment_context="buyer",
-            )
+        finish("duplicate", "buyer")
+        db.commit()
         logger.info("webhook_duplicate event=%s order_id=%s", event, order_id)
         return True, None
 
@@ -596,34 +581,12 @@ def handle_webhook_event(
             listing = db.query(SellLandRequest).filter(SellLandRequest.id == booking.request_id).first()
             if listing and listing.status != SellLandStatus.BOOKED.value:
                 mark_listing_booked(db, listing, commit=False)
+        finish("processed", "buyer")
         db.commit()
         try:
             _notify_buyer_booking_paid(db, listing, buyer_name=buyer_name)
         except Exception:
             logger.exception("Failed to send booking payment success notifications from webhook")
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="processed",
-                payment_context="buyer",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
-                db,
-                event_id=event_id,
-                event=event,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="processed",
-                payment_context="buyer",
-            )
         logger.info("webhook_payment_captured order_id=%s payment_id=%s", order_id, payment_id)
         return True, None
 
@@ -632,56 +595,13 @@ def handle_webhook_event(
         booking = get_booking_for_listing_buyer(db, order.property_id, order.user_id)
         if booking and booking.payment_status != PaymentStatus.FAILED.value:
             mark_booking_failed(db, booking, transaction_id=payment_id, commit=False)
+        finish("processed", "buyer")
         db.commit()
-        if existing:
-            update_webhook_log_attempt(
-                db,
-                existing,
-                status="processed",
-                payment_context="buyer",
-                payload=payload_json,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-            )
-        else:
-            create_webhook_log(
-                db,
-                event_id=event_id,
-                event=event,
-                order_id=order_id,
-                payment_id=payment_id,
-                signature=signature,
-                payload=payload_json,
-                status="processed",
-                payment_context="buyer",
-            )
         logger.info("webhook_payment_failed order_id=%s payment_id=%s", order_id, payment_id)
         return True, None
 
-    if existing:
-        update_webhook_log_attempt(
-            db,
-            existing,
-            status="ignored",
-            payment_context="buyer",
-            payload=payload_json,
-            order_id=order_id,
-            payment_id=payment_id,
-            signature=signature,
-        )
-    else:
-        create_webhook_log(
-            db,
-            event_id=event_id,
-            event=event,
-            order_id=order_id,
-            payment_id=payment_id,
-            signature=signature,
-            payload=payload_json,
-            status="ignored",
-            payment_context="buyer",
-        )
+    finish("ignored", "buyer")
+    db.commit()
     return True, None
 
 

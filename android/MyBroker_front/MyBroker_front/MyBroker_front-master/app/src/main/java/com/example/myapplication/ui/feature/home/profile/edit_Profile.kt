@@ -72,7 +72,9 @@ import java.util.Calendar
 fun EditProfileScreen(
     onSaveClick: () -> Unit = {},
     onBackClick: () -> Unit = {},
-    returnToOfferAfterSave: Boolean = false
+    returnToOfferAfterSave: Boolean = false,
+    returnToSiteVisitAfterSave: Boolean = false,
+    onSiteVisitSaveClick: () -> Unit = {}
 ) {
 
     val isConnected by rememberIsConnected()
@@ -155,14 +157,16 @@ fun EditProfileScreen(
                     if (res.isSuccessful) {
                         validationErrors = emptyMap()
                         Toast.makeText(context, "Profile updated", Toast.LENGTH_SHORT).show()
-                        if (returnToOfferAfterSave) {
+                        if (returnToOfferAfterSave || returnToSiteVisitAfterSave) {
                             val refreshed = api.getMyProfile()
                             val profile = refreshed.body().takeIf { refreshed.isSuccessful }
                             if (profile == null) {
                                 Toast.makeText(context, "Profile saved, but could not verify it. Please try again.", Toast.LENGTH_LONG).show()
                             } else {
                                 val missing = missingBuyerOfferProfileFields(profile)
-                                if (missing.isEmpty()) onSaveClick()
+                                if (missing.isEmpty()) {
+                                    if (returnToSiteVisitAfterSave) onSiteVisitSaveClick() else onSaveClick()
+                                }
                                 else Toast.makeText(context, "Profile is still incomplete. Missing: ${missing.joinToString(", ")}", Toast.LENGTH_LONG).show()
                             }
                         }

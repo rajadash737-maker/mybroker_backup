@@ -1,5 +1,6 @@
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     Date,
@@ -183,6 +184,59 @@ class SellLandBooking(Base):
     registry_proof_url = Column(String(500), nullable=True)
     registry_proof_name = Column(String(255), nullable=True)
     registry_notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+
+
+class PropertyBookingRefund(Base):
+    __tablename__ = "property_booking_refunds"
+    __table_args__ = (
+        UniqueConstraint("booking_id", name="uq_property_booking_refund_booking"),
+        UniqueConstraint("transaction_reference", name="uq_property_booking_refund_transaction_ref"),
+        CheckConstraint("refund_decision IN ('REFUND', 'NO_REFUND')", name="ck_property_booking_refund_decision"),
+        CheckConstraint("refund_status IN ('AWAITING_BUYER_DETAILS', 'PENDING_ACCOUNTING', 'CONFIRMED', 'FAILED', 'NOT_REQUIRED')", name="ck_property_booking_refund_status"),
+        CheckConstraint("original_captured_amount > 0 AND approved_refund_amount >= 0", name="ck_property_booking_refund_amounts_nonnegative"),
+        CheckConstraint("(refund_decision = 'REFUND' AND approved_refund_amount > 0) OR (refund_decision = 'NO_REFUND' AND approved_refund_amount = 0)", name="ck_property_booking_refund_decision_amount"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    booking_id = Column(Integer, ForeignKey("sell_land_bookings.id"), nullable=False, index=True)
+    listing_id = Column(Integer, ForeignKey("sell_land_requests.id"), nullable=False, index=True)
+    buyer_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    cancellation_actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    cancellation_actor_role = Column(String(30), nullable=False)
+    cancelled_at = Column(DateTime, nullable=False, server_default=func.now())
+    cancellation_reason = Column(String(500), nullable=False)
+    previous_listing_status = Column(String(20), nullable=False)
+    refund_decision = Column(String(20), nullable=False)
+    approved_refund_amount = Column(Numeric(12, 2), nullable=False, default=0)
+    original_captured_amount = Column(Numeric(12, 2), nullable=False)
+    payment_order_id = Column(Integer, ForeignKey("razorpay_payment_orders.id"), nullable=False)
+    refund_status = Column(String(30), nullable=False, index=True)
+    buyer_upi_ciphertext = Column(Text, nullable=True)
+    buyer_upi_submitted_at = Column(DateTime, nullable=True)
+    actual_refunded_amount = Column(Numeric(12, 2), nullable=True)
+    transaction_reference = Column(String(120), nullable=True)
+    confirmation_note = Column(String(500), nullable=True)
+    accounting_actor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    accounting_confirmed_at = Column(DateTime, nullable=True)
+    failure_reason = Column(String(500), nullable=True)
+    accounting_failed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, nullable=False, server_default=func.now())
+    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+
+
+class PropertyBookingRefundEvent(Base):
+    __tablename__ = "property_booking_refund_events"
+
+    id = Column(Integer, primary_key=True, index=True)
+    refund_id = Column(Integer, ForeignKey("property_booking_refunds.id"), nullable=False, index=True)
+    booking_id = Column(Integer, ForeignKey("sell_land_bookings.id"), nullable=False, index=True)
+    event_type = Column(String(40), nullable=False)
+    from_status = Column(String(30), nullable=True)
+    to_status = Column(String(30), nullable=False)
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    actor_role = Column(String(30), nullable=False)
+    note = Column(String(500), nullable=True)
     created_at = Column(DateTime, nullable=False, server_default=func.now())
 
 

@@ -24,8 +24,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.outlined.CameraAlt
+import androidx.compose.material.icons.outlined.EventAvailable
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.LocalOffer
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -34,7 +39,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -66,6 +70,7 @@ import java.util.Locale
 fun LandCard(
     land: Land,
     onClick: () -> Unit,
+    onSiteVisitClick: () -> Unit,
     onWishlistClick: () -> Unit,
     onMakeOfferClick: () -> Unit,
     onMapClick: () -> Unit
@@ -243,45 +248,77 @@ fun LandCard(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                validatedInstagramUrl(land.instagramUrl)?.let { instagramUrl ->
-                    TextButton(
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = {
-                            runCatching {
-                                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(instagramUrl)))
-                            }.onFailure {
-                                Toast.makeText(context, "No app or browser can open this Instagram link.", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    ) { Text("Instagram") }
-                }
-
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
-                        onClick = onClick
+                    Button(
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp),
+                        onClick = onSiteVisitClick
                     ) {
-                        Text("Details")
+                        Icon(Icons.Outlined.EventAvailable, contentDescription = null, modifier = Modifier.size(17.dp))
+                        Spacer(Modifier.width(5.dp))
+                        Text("Site Visit", maxLines = 1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
 
-                    OutlinedButton(
-                        modifier = Modifier.weight(1f),
+                    validatedInstagramUrl(land.instagramUrl)?.let { instagramUrl ->
+                        OutlinedButton(
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp),
+                            onClick = {
+                                runCatching {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(instagramUrl)))
+                                }.onFailure {
+                                    Toast.makeText(context, "No app or browser can open this Instagram link.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Outlined.CameraAlt, contentDescription = null, modifier = Modifier.size(17.dp))
+                            Spacer(Modifier.width(5.dp))
+                            Text("Instagram", maxLines = 1, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    FilledTonalButton(
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp),
+                        onClick = onClick
+                    ) {
+                        Icon(Icons.Outlined.Info, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Details", maxLines = 1, fontSize = 13.sp)
+                    }
+
+                    FilledTonalButton(
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp),
                         onClick = onMapClick
                     ) {
-                        Icon(Icons.Default.Map, contentDescription = null)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Map")
+                        Icon(Icons.Outlined.Map, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text("Map", maxLines = 1, fontSize = 13.sp)
                     }
 
                     Button(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(1f).height(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 5.dp),
                         enabled = !isLocked,
                         onClick = onMakeOfferClick
                     ) {
-                        Text(if (isLocked) "Locked" else "Offer")
+                        Icon(Icons.Outlined.LocalOffer, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(3.dp))
+                        Text(if (isLocked) "Locked" else "Offer", maxLines = 1, fontSize = 13.sp)
                     }
                 }
             }

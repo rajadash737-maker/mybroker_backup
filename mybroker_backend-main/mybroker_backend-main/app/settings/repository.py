@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from sqlalchemy.orm import Session
 
 from sqlalchemy import func
@@ -64,10 +66,12 @@ def create_processing_fee_settings(
     db: Session,
     seller_processing_fee: float,
     buyer_processing_fee: float,
+    site_visit_fee: Decimal = Decimal("0.00"),
 ) -> ProcessingFeeSettings:
     record = ProcessingFeeSettings(
         seller_processing_fee=seller_processing_fee,
         buyer_processing_fee=buyer_processing_fee,
+        site_visit_fee=site_visit_fee,
     )
     db.add(record)
     db.commit()

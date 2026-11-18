@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, time
+from decimal import Decimal
 from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
@@ -398,6 +399,13 @@ class AdminBookedListingDetailResponse(BaseModel):
     payment: AdminBookedPaymentInfo
     field_officer: AdminCaseLockOfficerSummary | None = None
     registry: AdminRegistryInfo | None = None
+    cancellation_reason: str | None = None
+    refund_decision: str | None = None
+    refund_status: str | None = None
+    approved_refund_amount: Decimal | None = None
+    actual_refunded_amount: Decimal | None = None
+    refund_reference: str | None = None
+    cancelled_at: datetime | None = None
 
 
 class AdminBookingFieldOfficerUpdateRequest(BaseModel):
@@ -421,6 +429,130 @@ class AdminRegistryScheduleResponse(BaseModel):
     booking_id: int
     booking_status: BookingStatus
     registry: AdminRegistryInfo
+
+
+class PropertyBookingCancellationRequest(BaseModel):
+    refund_decision: str
+    refund_amount: Decimal | None = None
+    cancellation_reason: str = Field(min_length=5, max_length=500)
+
+    @field_validator("refund_decision")
+    @classmethod
+    def validate_refund_decision(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if cleaned not in {"REFUND", "NO_REFUND"}:
+            raise ValueError("refund_decision must be REFUND or NO_REFUND")
+        return cleaned
+
+    @field_validator("cancellation_reason")
+    @classmethod
+    def validate_cancellation_reason(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("cancellation_reason is required")
+        return cleaned
+
+    @field_validator("refund_amount")
+    @classmethod
+    def validate_refund_precision(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and (not value.is_finite() or value.as_tuple().exponent < -2):
+            raise ValueError("refund_amount must use at most two decimal places")
+        return value
+
+
+class PropertyBookingCancellationResponse(BaseModel):
+    booking_id: int
+    listing_id: int
+    refund_id: int
+    booking_status: str
+    listing_status: str
+    refund_decision: str
+    refund_status: str
+    original_captured_amount: Decimal
+    approved_refund_amount: Decimal
+
+
+class PropertyBookingCancellationPreview(BaseModel):
+    booking_id: int
+    listing_id: int
+    listing_code: str | None = None
+    property_name: str | None = None
+    buyer_name: str
+    buyer_mobile: str
+    booking_status: str
+    listing_status: str
+    captured_payment_amount: Decimal | None = None
+    captured_at: datetime | None = None
+    can_cancel: bool
+    blocking_reason: str | None = None
+
+
+class PropertyBookingRefundQueueItem(BaseModel):
+    refund_id: int
+    booking_id: int
+    listing_id: int
+    listing_code: str | None = None
+    property_name: str | None = None
+    buyer_name: str
+    buyer_mobile: str
+    original_captured_amount: Decimal
+    approved_refund_amount: Decimal
+    cancellation_reason: str
+    refund_status: str
+    cancelled_at: datetime
+    buyer_upi_id: str | None = None
+
+
+class PropertyBookingRefundQueueResponse(BaseModel):
+    total: int
+    skip: int
+    limit: int
+    items: list[PropertyBookingRefundQueueItem]
+
+
+class PropertyBookingRefundHistoryItem(BaseModel):
+    event_type: str
+    from_status: str | None = None
+    to_status: str
+    actor_role: str
+    note: str | None = None
+    created_at: datetime
+
+
+class AccountingPropertyBookingRefundDetail(PropertyBookingRefundQueueItem):
+    buyer_id: int
+    buyer_upi_id: str | None = None
+    transaction_reference: str | None = None
+    actual_refunded_amount: Decimal | None = None
+    confirmation_note: str | None = None
+    accounting_confirmed_at: datetime | None = None
+    payment_order_id: int
+    history: list[PropertyBookingRefundHistoryItem]
+
+
+class AccountingPropertyBookingRefundConfirmRequest(BaseModel):
+    actual_refunded_amount: Decimal
+    transaction_reference: str = Field(min_length=3, max_length=120)
+    confirmation_note: str | None = Field(default=None, max_length=500)
+
+    @field_validator("actual_refunded_amount")
+    @classmethod
+    def validate_amount_precision(cls, value: Decimal) -> Decimal:
+        if not value.is_finite() or value.as_tuple().exponent < -2:
+            raise ValueError("actual_refunded_amount must use at most two decimal places")
+        return value
+
+    @field_validator("transaction_reference")
+    @classmethod
+    def normalize_reference(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("transaction_reference is required")
+        return cleaned
+
+
+class AccountingPropertyBookingRefundFailRequest(BaseModel):
+    reason: str = Field(min_length=3, max_length=500)
 
 
 class AdminRegistryVerificationRequest(BaseModel):

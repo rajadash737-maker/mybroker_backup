@@ -125,6 +125,13 @@ fun SuperAdminDashboardScreen(navController: NavHostController) {
                 item { Spacer(modifier = Modifier.height(12.dp)) }
 
                 item {
+                    androidx.compose.material3.Button(
+                        onClick = { navController.navigate(Routes.SUPER_ADMIN_SITE_VISIT_AUDIT) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Site Visit Audit") }
+                }
+
+                item {
                     Row {
                         StatCard(
                             title = "Staff",
